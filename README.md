@@ -1,2 +1,4 @@
 # aaaa0ggmcLib
-个人的工具库，这个是准备写Generation5而单独开出来的仓库，之前都在UnlimitedLife-Linux中开发
+一个我觉得挺不错的工具库，9成新，男生自用，专注于Linux生态，Windows会象征性兼容一下，具体的兼容情况待定。
+
+
