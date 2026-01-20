@@ -1,0 +1,2 @@
+# aaaa0ggmcLib
+个人的工具库，这个是准备写Generation5而单独开出来的仓库，之前都在UnlimitedLife-Linux中开发
