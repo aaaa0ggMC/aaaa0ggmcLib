@@ -90,6 +90,13 @@
 #define ACP_BGRGB(r,g,b) "\e[48;2;" #r ";" #g ";" #b "m"
 #endif
 
-
+/// 关于路径
+#ifdef _WIN32
+    #define ALIB_PATH_SEP '\\'
+    #define ALIB_PATH_SEPS "\\"
+#else
+    #define ALIB_PATH_SEP '/'
+    #define ALIB_PATH_SEPS "/"
+#endif
 
 #endif

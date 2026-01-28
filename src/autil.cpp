@@ -1,5 +1,10 @@
 #include <alib5/autil.h>
+#include <cstddef>
+#include <cstdio>
 #include <fstream>
+#include <filesystem>
+#include <deque>
+#include <system_error>
 
 using namespace alib5;
 
@@ -62,10 +67,10 @@ std::string_view sys::get_cpu_brand(){
     }
     return "Unknown";
     #else
+    static std::pmr::string line(ALIB5_DEFAULT_MEMORY_RESOURCE);
     std::ifstream proc("/proc/cpuinfo");
     
     if(proc.good()){
-        static std::pmr::string line(ALIB5_DEFAULT_MEMORY_RESOURCE);
         while(std::getline(proc,line)){
             if(line.find("model name") != std::string::npos){
                 line = line.substr(line.find(":") + 2);
@@ -76,4 +81,82 @@ std::string_view sys::get_cpu_brand(){
         return line;
     }else return "Unknown";
     #endif
+}
+
+void io::TraverseConfig::build() noexcept{
+    for(auto val : keep){
+        allow[(int)val + 1] = true;
+    }
+}
+
+io::TraverseData io::traverse_files(std::string_view file_path,TraverseConfig cfg) noexcept{
+    io::TraverseData ret;
+    auto root = std::filesystem::path(file_path);
+    if(root.is_relative()){
+        root = std::filesystem::current_path() / root;
+        ret.root_absolute = std::filesystem::current_path().string();
+    }else ret.root_absolute = root.string();
+    if(ret.root_absolute.empty()){
+        invoke_error(err_filesystem_error,"cannot locate root directory!");
+        return {};
+    }
+    if(ret.root_absolute.back() != '/' && ret.root_absolute.back() != '\\'){
+        ret.root_absolute.push_back(ALIB_PATH_SEP);
+    }
+
+    // 构建小东西
+    cfg.build();
+
+    std::error_code err;
+    if(!std::filesystem::is_directory(root,err)){
+        invoke_error(err_filesystem_error,"\"{}\" is not a directory!",root.string());
+    }else if(err){
+        invoke_error(err_filesystem_error,err.message());
+        return {};
+    }
+
+    int current_depth = 0;
+    std::deque<std::filesystem::path> current_layer;
+    std::deque<std::filesystem::path> next_layer;
+    current_layer.emplace_back(root);
+
+    while(!current_layer.empty() && (current_depth < cfg.depth || cfg.depth < 0)){
+        for(auto & p : current_layer){
+            for(auto & sub : std::filesystem::directory_iterator(p)){
+                FileEntry entry;
+                entry.type = (FileEntry::Type)sub.status().type();
+                entry.path = sub.path().string();
+                
+                if(entry.path.empty()){
+                    continue;
+                }
+
+                bool keep = true;
+                
+                if(std::filesystem::is_directory(sub,err)){
+                    if(entry.path.back() != '/' && entry.path.back() != '\\'){
+                        entry.path.push_back(ALIB_PATH_SEP);
+                    }
+                    if(current_depth + 1 != cfg.depth)next_layer.push_back(entry.path);
+                }
+                if(err){
+                    invoke_error(err_filesystem_error,err.message());
+                }else if(cfg.allow[(int)entry.type + 1]){
+                    for(auto & fn : cfg.ignore){
+                        if(fn(ret.try_get_relative(entry))){
+                            keep = false;
+                            break;
+                        }
+                    }
+                }else keep = false;
+                if(keep)ret.targets_absolute.emplace_back(entry);
+            }
+        }
+
+        ++current_depth;
+        current_layer = next_layer;
+        next_layer = {}; 
+    }
+
+    return ret;
 }
