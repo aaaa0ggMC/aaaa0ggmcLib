@@ -115,6 +115,8 @@ namespace alib5{
         Error = 4, ///< Error级别，问题大了点，能接受
         Fatal = 5  ///< Fatal级别，不能接受的超级大问题
     };
+    /// 获取alib使用的severity的字符串
+    std::string_view get_severity_str(Severity sv);
 
     /// invoke_error产生的错误的结构
     struct ALIB5_API RuntimeError{
@@ -126,6 +128,18 @@ namespace alib5{
         Severity severity;
         /// 一般调试用，错误出现的位置
         std::source_location location;
+
+        /// 兼容logger
+        template<class Data> inline void write_to_log(Data & ctx) const{
+            std::format_to(std::back_inserter(ctx),"[ID:{}][{}] {} in [{}:{}:{}]", 
+                id,
+                get_severity_str(severity),
+                data,
+                location.file_name(),
+                location.line(),
+                location.column()
+            );
+        }
     };   
 
     /// 对于错误处理的快trigger函数
@@ -469,6 +483,25 @@ namespace alib5{
             if constexpr(copy){
                 return String(fmt_buf.c_str(),ALIB5_DEFAULT_MEMORY_RESOURCE);
             }else return std::string_view(fmt_buf);
+        }
+    }
+
+    inline std::string_view get_severity_str(Severity sv){
+        switch(sv){
+        case Severity::Trace:
+            return "TRACE";
+        case Severity::Debug:
+            return "DEBUG";
+        case Severity::Info:
+            return "INFO ";
+        case Severity::Warn:
+            return "WARN ";
+        case Severity::Error:
+            return "ERROR";
+        case Severity::Fatal:
+            return "FATAL";
+        default:
+            return "?????";
         }
     }
 }
