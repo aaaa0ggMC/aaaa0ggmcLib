@@ -62,8 +62,8 @@ RELEASE:
 ********************************************************
  * @start-date 2025/11/08 
  */
-#ifndef AREF_H_INCLUDED
-#define AREF_H_INCLUDED
+#ifndef ALIB5_AREF
+#define ALIB5_AREF
 #include <algorithm>
 #include <concepts>
 #include <limits>

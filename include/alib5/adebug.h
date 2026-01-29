@@ -9,8 +9,8 @@
  * 
  * @start-date 2025/11/09 
  */
-#ifndef ADEBUG_H_INCLUDED
-#define ADEBUG_H_INCLUDED
+#ifndef ALIB5_ADEBUG
+#define ALIB5_ADEBUG
 #include <stacktrace>
 #include <source_location>
 #include <assert.h>
