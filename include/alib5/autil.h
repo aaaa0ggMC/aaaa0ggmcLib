@@ -1,7 +1,7 @@
 /**@file autil.h
 * @brief 工具库，提供实用函数
 * @author aaaa0ggmc
-* @date 2026/01/28
+* @date 2026/01/29
 * @version 5.0
 * @copyright Copyright(c) 2026
 */
@@ -9,9 +9,16 @@
 #define ALIB5_AUTIL
 #include <alib5/detail/abase.h>
 #include <alib5/detail/aerr_id.h>
+#include <cctype>
 #include <concepts>
 #include <cstdint>
+#include <cstdio>
+#include <filesystem>
 #include <iterator>
+#include <ranges>
+#include <system_error>
+#include <unordered_map>
+#include <variant>
 #include <vector>
 #include <memory_resource>
 #include <source_location>
@@ -22,6 +29,7 @@
 #include <format>
 #include <type_traits>
 #include <utility>
+#include <cstdio>
 
 /// 虽然其实这个没啥用，但是这个还是指定了默认情况下alib5使用的内存资源
 #define ALIB5_DEFAULT_MEMORY_RESOURCE std::pmr::get_default_resource()
@@ -30,9 +38,22 @@
 #define defer alib5::defer_t CAT_2(defer,__COUNTER__) = [&] noexcept  
 #define MAY_INVOKE(N) if constexpr(conf_lib_error_invoke_level >= (N))
 
+/// 提供对view和其他类型之间的尝试性赋值
+template<class T,std::ranges::range R> inline
+T& operator|=(T & t,R && r){
+    if constexpr (requires { t.assign(std::ranges::begin(r), std::ranges::end(r)); }) {
+        t.assign(std::ranges::begin(r), std::ranges::end(r));
+    } else {
+        t = T(std::ranges::begin(r), std::ranges::end(r));
+    }
+    return t;
+}
+
 namespace alib5{
     /// 默认的错误推送预留大小
     constexpr uint32_t conf_error_string_reserve_size = 64;
+    /// 默认的通用预留大小（如果你是库bin版本使用者不建议修改，因为bin中部分函数用的是我编译时的大小）
+    constexpr uint32_t conf_generic_string_reserve_size = 128;
     /// Level 0 : 没有输出
     /// Level 1 : 致命错误的时候输出
     /// Level 2 : 轻伤输出
@@ -41,6 +62,13 @@ namespace alib5{
     /// 判断输入内容是否可以归类于string
     template<class T> concept IsStringLike = std::convertible_to<T,std::string_view>;
     using String = std::pmr::string;
+    /// 判断是否支持字符串的扩充函数
+    template<class T> concept CanExtendString = requires(T & t){
+        { t.data() } -> std::convertible_to<char*>;
+        t.resize((size_t)1);
+        { t.size() } -> std::convertible_to<size_t>;
+        typename T::value_type;
+    } && std::ranges::contiguous_range<T>;
 
     namespace detail{
         // 用于触发implicit调用方便处理
@@ -119,13 +147,46 @@ namespace alib5{
     /// 设置慢触发函数
     void ALIB5_API add_error_callback(RTErrorTriggerFnpp heavy_fn) noexcept;
 
+    /// 杂类函数
+    namespace misc{
+        /// 返回格式化的当前时间
+        std::string_view ALIB5_API get_time() noexcept;
+        /// 格式化时间
+        std::string_view ALIB5_API format_duration(int seconds) noexcept;
+    }
+
     /// 字符串处理函数
     namespace str{
-
+        /// 更加高级的去除转义语序
+        std::string_view ALIB5_API unescape(std::string_view in) noexcept;
+        /// 去除空白字符，返回的是input的sub string_view
+        std::string_view ALIB5_API trim(std::string_view input);
+        // 分割字符串，可以识别整个字符串,vector中为对source的切片
+        std::vector<std::string_view> ALIB5_API split(std::string_view source,std::string_view seps) noexcept;
+        /// 分割字符串,vector中为对source的切片
+        inline std::vector<std::string_view> ALIB5_API split(std::string_view source,const char sep) noexcept{
+            return str::split(source, std::string_view(&sep,1));
+        }
+        /// 大小写转换
+        inline auto to_upper(std::string_view input){
+            return input | std::views::transform([](const char & ch){
+                return std::toupper(ch);
+            });
+        }
+        inline auto to_lower(std::string_view input){
+            return input | std::views::transform([](const char & ch){
+                return std::tolower(ch);
+            });
+        }
     };
 
     /// 文件io函数
     namespace io{
+        /// 读取文件
+        template<CanExtendString T> size_t read_all(std::string_view path,T & output);
+        /// 写入文件
+        template<CanExtendString T> size_t write_all(std::string_view path,T & input);
+        
         /// 保存了文件类型以及文件的名字
         /// 其中，对于directory（包括link），保证末尾是"/"或者"\\"(Windows)
         struct ALIB5_API FileEntry{
@@ -137,12 +198,95 @@ namespace alib5{
                 character = 5, fifo = 6,
                 socket = 7   , unknown = 8
             };
-            
+
+            /// 移动函数
+            inline void operator=(FileEntry && entry){
+                path = std::move(entry.path);
+                type = entry.type;
+                subs = std::move(entry.subs);
+                scanned = entry.scanned;
+            }
+            /// 复制函数
+            inline void operator=(const FileEntry & entry){
+                path = entry.path;
+                type = entry.type;
+                subs = entry.subs;
+                scanned = entry.scanned;
+            }
+            inline FileEntry(FileEntry&& entry) noexcept{
+                operator=(std::forward<FileEntry>(entry));
+            }
+            inline FileEntry(const FileEntry& entry) noexcept {
+                *this = entry;
+            }
+            inline FileEntry() noexcept{}
+
+            /// 是否有效
+            inline bool invalid() const{
+                return (type == not_found) || (!path.compare(""));
+            }
+
+            /// 重新扫描，适用于手动情况
+            inline void rescan() const{
+                scanned = false;
+                scan_subs();
+            }
+
+            inline size_t file_size() const{
+                std::error_code ec;
+                size_t size = std::filesystem::file_size(path,ec);
+                if(ec){
+                    return std::variant_npos;
+                }
+                return size;
+            }
+
+            inline size_t elements_size() const{
+                scan_subs();
+                return subs.size();
+            }
+
+            inline auto begin() const{ scan_subs(); return subs.cbegin(); }
+            inline auto end()const { scan_subs(); return subs.cend(); }
+            inline auto begin(){ scan_subs(); return subs.begin(); }
+            inline auto end(){ scan_subs(); return subs.end(); }
+
+            /// 获取子目录
+            const FileEntry& operator[](std::string_view str) const;
+            /// 获取子目录，但是不需要进行立即扫描
+            const FileEntry& operator()(std::string_view str) const;
+
+            /// 读取数据
+            template<CanExtendString T> size_t read(T & output,std::size_t read_count = 0) const;
+            /// 读取数据，比较简单的版本，固定返回pmr
+            inline std::pmr::string read(std::size_t read_count = 0) const{
+                std::pmr::string str (ALIB5_DEFAULT_MEMORY_RESOURCE);
+                read(str,read_count);
+                return str;
+            }
+            /// 写入数据
+            template<CanExtendString T> size_t write_all(T & output) const;
+
             /// 文件路径
-            std::pmr::string path;
+            std::pmr::string path {ALIB5_DEFAULT_MEMORY_RESOURCE};
             /// 类型
-            Type type;
+            Type type {not_found};
+        private:
+            /// 缓存的子对象
+            mutable std::pmr::unordered_map<std::pmr::string,FileEntry> subs {ALIB5_DEFAULT_MEMORY_RESOURCE};
+            /// 缓存是否已经构建
+            mutable bool scanned { false };
+            /// 用于处理扁平化获取。一般大小不会很大
+            mutable std::pmr::unordered_map<std::pmr::string,FileEntry> flat_subs {ALIB5_DEFAULT_MEMORY_RESOURCE};
+
+            /// 生成不有效的数据
+            static const FileEntry& gen_invalid();
+
+            /// 搜索子目录
+            void scan_subs() const;
         };
+
+        FileEntry ALIB5_API load_entry(std::string_view) noexcept;
 
         /// 遍历目录的结果
         struct ALIB5_API TraverseData{
@@ -194,20 +338,95 @@ namespace alib5{
     namespace sys{
     #ifdef _WIN32
         /// 启用系统的虚拟控制台，这样才能进行彩色转义输出
-        ALIB5_API void enable_virtual_terminal();
+        ALIB5_API void enable_virtual_terminal() noexcept;
     #else
         // 一般都支持，所以留空
         /// 启用系统虚拟控制台（基本上都是支持的）
-        inline void enable_virtual_terminal(){}
+        inline void enable_virtual_terminal() noexcept{}
     #endif
         
         /// 获取系统的CPU的品牌名
-        std::string_view get_cpu_brand();
+        std::string_view ALIB5_API get_cpu_brand() noexcept;
+
+        /// 内存占用结构体
+        struct ALIB5_API ProgramMemUsage{
+            mem_bytes memory;       ///< 内存占用
+            mem_bytes virt_memory;  ///< 虚拟内存占用
+        };
+
+        /// 全局内存占用结构体
+        struct ALIB5_API GlobalMemUsage{
+            //In linux,percent = phyUsed / phyTotal
+            unsigned int percent;     ///< 占用百分比,详情有注意事项 @attention Linux上等于 physicalUsed/physicalTotal,Windows上使用API提供的dwMemoryLoad
+            mem_bytes physical_total; ///< 物理内存总值
+            mem_bytes virtual_total;  ///< 虚拟内存总值，Linux上暂时固定为0
+            mem_bytes physical_used;  ///< 物理内存占用值
+            mem_bytes virtual_used;   ///< 虚拟内存占用值，Linux上暂时固定为0
+            mem_bytes page_total;     ///< 页面文件总值，Linux上为SwapSize
+            mem_bytes page_used;      ///< 页面文件占用值,Linux上为SwapUsed
+        };
+
+
+        /// 获取程序内存占用
+        ProgramMemUsage ALIB5_API get_prog_mem_usage() noexcept;
+
+        /// 获取系统内存占用
+        GlobalMemUsage ALIB5_API get_global_mem_usage() noexcept;
     }
 };
 
 // 这里是统一的inline实现
 namespace alib5{
+    /// 写入文件
+    template<CanExtendString T> size_t write_all(std::string_view path,T & output){
+        // 这里主要是惧怕path是从一段字符串截取下来的，不构建string会导致输出错误
+        FILE * f = std::fopen(std::string(path).c_str(),"wb");
+        if(!f){
+            invoke_error(err_io_error,"Failed to open file {}!",path);
+            return std::variant_npos;
+        }
+        auto sz = std::fwrite(output.data(),sizeof(T::value_type),output.size(),f);
+        std::fclose(f);
+        return sz;
+    }
+
+    /// 写入文件
+    template<CanExtendString T> size_t io::FileEntry::write_all(T & input) const{
+        return write_all(path,input);
+    }
+
+    /// 内置读取文件
+    template<CanExtendString T> inline size_t io::FileEntry::read(T & output,std::size_t read_count) const{
+        if(!read_count)read_count = file_size();
+        if(read_count == std::variant_npos){
+            invoke_error(err_io_error,"File {} is invalid!",path);
+            return std::variant_npos;
+        }
+
+        FILE * f = std::fopen(path.c_str(),"rb");
+        if(f == NULL){
+            invoke_error(err_io_error,"Failed to open file {}!",path);
+            return std::variant_npos;
+        }
+
+        size_t old_size = output.size();
+        output.resize(old_size + read_count);
+        std::fread(output.data() + old_size,sizeof(char),read_count,f);
+        std::fclose(f);
+        return read_count;
+    }
+
+    /// 读取文件
+    template<CanExtendString T> inline size_t read_all(std::string_view path,T & output){
+        io::FileEntry entry = io::load_entry(path);
+        auto size = entry.file_size();
+        if(size == std::variant_npos){
+            invoke_error(err_io_error,"File {} is invalid!",path);
+            return size;
+        }
+        return entry.read(output,size);
+    }
+
     template<class... Args>
     inline void invoke_error(detail::ErrorCtx ctx,std::string_view fmt,Severity sv,Args&&... args) noexcept{
         try{
