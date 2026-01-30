@@ -37,11 +37,14 @@ namespace alib5{
         /// 对头进行匹配
         inline bool match(std::string_view chead){return chead == head;}
         /// 对头进行一系列匹配
-        inline bool match(std::span<std::string_view> cheads){
+        inline bool match(std::span<const std::string_view> cheads){
             for(auto h : cheads){
                 if(match(h))return true;
             }
             return false;
+        }
+        inline bool match(std::initializer_list<std::string_view> data){
+            return match(std::span(data.begin(),data.end()));
         }
 
         /// 分析器，提供渐进式分析
@@ -51,6 +54,8 @@ namespace alib5{
             /// 当前保存的数据列
             std::pmr::vector<std::string_view> inputs;
         private:
+            friend class Parser;
+
             /// 由cursor生成sub analyser提供层进分析
             Analyser(Parser & p,std::span<std::string_view> i):
             parser(p),
@@ -162,18 +167,55 @@ namespace alib5{
                     matched = false;
                 }
 
+                /// 检测下一个数据是否match
+                inline bool match(std::string_view data){
+                    return peek() == data;
+                }
+                inline bool match(std::span<const std::string_view> data){
+                    for(auto c : data){
+                        if(match(c))return true;
+                    }
+                    return false;
+                }
+                inline bool match(std::initializer_list<std::string_view> data){
+                    return match(std::span(data.begin(),data.end()));
+                }
+
                 /// 步进下一条数据
                 Value ALIB5_API next() noexcept;
                 /// 尝试访问下一条数据
                 Value ALIB5_API peek() const noexcept;
 
+                /// 跳过数据
+                inline void skip(size_t n = 1){
+                    for(int i = 0;i < n;++i){
+                        (void) next();
+                    }
+                }
+
                 /// 上传数据，同时生成子analyser可用于进行进一步的访问
                 Analyser ALIB5_API commit() noexcept;
+
+                /// 这里是为了方便直接生成sub analyser而不一定需要commit
+                Analyser ALIB5_API sub() noexcept;
             };
 
             Analyser(Parser & p):
             parser(p),
             inputs(parser.args.begin(),parser.args.end(),parser.resource){}
+
+            /// 直接转换，方便直接进行操作
+            inline Cursor as_cursor() noexcept {
+                if(inputs.size() <= 1) {
+                    return Cursor{*this, inputs, 0, false};
+                }
+                return Cursor{
+                    *this,
+                    std::span(inputs.begin(), inputs.end()),
+                    0,
+                    true
+                };
+            }
 
             /// 尝试获取当前剩余的有效数据
             inline std::span<std::string_view> peek_remains(){
@@ -187,7 +229,7 @@ namespace alib5{
             }
             /// 判断当前的analyser是否还有有效数据
             inline operator bool(){
-                return inputs.size() <= 1;
+                return inputs.size() > 1;
             }
 
             /// 匹配完整的option
@@ -228,18 +270,97 @@ namespace alib5{
             inline Cursor with_prefixes(std::initializer_list<std::string_view> prefixes,std::string_view opt_str) noexcept{
                 return with_prefixes(std::span(prefixes.begin(),prefixes.end()),opt_str);
             }
+
+            //// 提供懒人级别的api ////
+            /// 提取是否含有
+            inline bool extract_first_flag(std::string_view flag){
+                if(auto c =  with_opt(flag)){
+                    c.commit();
+                    return true;
+                }
+                return false;
+            }
+            /// 提取是否含有，！！！会移除所有重复的flag
+            inline bool extract_flag(std::string_view flag){
+                bool ret = false;
+                while(extract_first_flag(flag)){
+                    ret = true;
+                }
+                return ret;
+            }
+            /// 会逐步提取所有重复内容直到没有额外信息
+            inline bool extract_first_any_flag(std::span<const std::string_view> flags){
+                for(auto c : flags){
+                    if(extract_first_flag(c))return true;
+                }
+                return false;
+            }
+            /// 会逐步提取所有重复内容直到没有额外信息
+            inline bool extract_any_flag(std::span<const std::string_view> flags){
+                bool val = false;
+                for(auto c : flags){
+                    val |= extract_flag(c);
+                }
+                return val;
+            }
+            /// 会逐步提取所有重复内容直到没有额外信息
+            inline bool extract_any_flag(std::initializer_list<const std::string_view> flags){
+                return extract_any_flag(std::span(flags.begin(),flags.end()));
+            }
+
+            //// 对于 XXX = 这种具有赋值意味的东西
+            inline Value extract_an_option(std::string_view key,std::string_view opt = "="){
+                if(auto c = with_prefix(key)){
+                    Value v = c.next();
+                    c.commit();
+                    return v;
+                }
+                return "";
+            }
+            inline std::pmr::vector<Value> extract_options(std::string_view key,std::string_view opt = "="){
+                std::pmr::vector<Value> ret (parser.resource);
+                while(true){
+                    if(auto c = with_prefix(key,opt)){
+                        ret.emplace_back(c.next());
+                        c.commit();
+                        continue;
+                    }
+                    break;
+                }
+                return ret;
+            }
+
+            /// 支持别名的选项提取：extract_any_option({"--port", "-p"}, "8080")
+            inline Value extract_any_option(std::initializer_list<std::string_view> keys, std::string_view opt = "=") {
+                for(auto key : keys) {
+                    if(auto c = with_prefix(key, opt)) {
+                        Value v = c.next();
+                        c.commit();
+                        return v;
+                    }
+                }
+                return "";
+            }
         };
 
         /// 返回对应的分析器
         inline Analyser analyse(){
             return Analyser(*this);
         }
+
+        /// 带有管道符号的解析
+        std::pmr::vector<Analyser> ALIB5_API analyse_pipe();
+
         /// 简单化分析器具
         inline Analyser operator()(){
             return Analyser(*this);
         }
     };
 
+    using pparset_t = Parser;
+    using panalyser_t = Parser::Analyser;
+    using pcursor_t = Parser::Analyser::Cursor;
+    using pvalue_t = Parser::Analyser::Value;
 };
 
 #endif

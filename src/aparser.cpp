@@ -8,6 +8,39 @@ head(resource),
 arg_full(resource),
 args(resource){}
 
+std::pmr::vector<panalyser_t> pparset_t::analyse_pipe(){
+    std::pmr::vector<panalyser_t> results(resource);
+    auto& all_args = this->args;
+    auto start_it = all_args.begin();
+
+    for(auto it = all_args.begin(); it != all_args.end(); ++it){
+        if(*it == "|"){
+            std::pmr::vector<std::string_view> vs;
+            for(auto i = start_it;i < it;++i)vs.push_back(*i);
+            results.emplace_back(Analyser(*this, vs));
+            start_it = it + 1;
+        }
+    }
+    std::pmr::vector<std::string_view> vs;
+    for(auto i = start_it;i < all_args.end();++i)vs.push_back(*i);
+    results.emplace_back(Analyser(*this, vs));
+    return results;
+}
+
+/// 这里是为了方便直接生成sub analyser而不一定需要commit
+pparset_t::Analyser pcursor_t::sub() noexcept{
+    panic_debug(!matched, "Cursor context is invalid!");
+    if(applied)return Analyser(
+        m_analyser.parser,
+        cached_data
+    );
+    return Analyser{
+      m_analyser.parser,
+      std::span(data.begin(),
+        data.begin() + cursor)  
+    };
+}
+
 Parser::Analyser Parser::Analyser::Cursor::commit() noexcept{
     panic_debug(!matched, "Cursor context is invalid!");
     if(applied)return Analyser(
