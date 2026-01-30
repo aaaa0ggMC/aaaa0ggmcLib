@@ -1,7 +1,4 @@
-#include <algorithm>
 #include <alib5/autil.h>
-#include <charconv>
-#include <chrono>
 #include <cstddef>
 #include <cstdio>
 #include <fstream>
@@ -457,6 +454,40 @@ std::string_view str::unescape(std::string_view in) noexcept {
             }
         }else{
             buffer += in[i];
+        }
+    }
+    return buffer;
+}
+
+std::string_view str::escape(std::string_view in) noexcept {
+    // 保持血统一致，使用 thread_local 缓存避免频繁分配
+    static thread_local std::pmr::string buffer {ALIB5_DEFAULT_MEMORY_RESOURCE};
+    buffer.clear();
+
+    for (size_t i = 0; i < in.size(); ++i) {
+        unsigned char c = in[i];
+        switch (c) {
+            case '\"': buffer += "\\\""; break;
+            case '\\': buffer += "\\\\"; break;
+            case '\a': buffer += "\\a";  break;
+            case '\b': buffer += "\\b";  break;
+            case '\f': buffer += "\\f";  break;
+            case '\n': buffer += "\\n";  break;
+            case '\r': buffer += "\\r";  break;
+            case '\t': buffer += "\\t";  break;
+            case '\v': buffer += "\\v";  break;
+            case '\x1b': buffer += "\\e"; break;
+            default:
+                // 处理不可见字符（非 ASCII 打印字符）
+                if (c < 32 || c > 126) {
+                    buffer += "\\x";
+                    static const char* hex = "0123456789abcdef";
+                    buffer += hex[(c >> 4) & 0xF];
+                    buffer += hex[c & 0xF];
+                } else {
+                    buffer += c;
+                }
+                break;
         }
     }
     return buffer;

@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 流式输出处控制，主持write_to_log(类函数&全局函数)编译期注入
  * @version 0.1
- * @date 2026/01/29
+ * @date 2026/01/30
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -114,8 +114,13 @@ namespace alib5{
         template<class T>
         StreamedContext&& write(T && t) && {
             if(!context_valid)return std::move(*this);
-            if(fmt_str.empty())std::format_to(std::back_inserter(cache_str),"{}",t);
-            else{
+            if(fmt_str.empty()){
+                if constexpr(IsStringLike<T>) {
+                    cache_str.append(std::forward<T>(t));
+                }else{
+                    std::format_to(std::back_inserter(cache_str),"{}",t);
+                }
+            }else{
                 std::vformat_to(std::back_inserter(cache_str),fmt_str.data(),
                     std::make_format_args(t)
                 );

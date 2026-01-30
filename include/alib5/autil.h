@@ -1,7 +1,7 @@
 /**@file autil.h
 * @brief 工具库，提供实用函数
 * @author aaaa0ggmc
-* @date 2026/01/29
+* @date 2026/01/30
 * @version 5.0
 * @copyright Copyright(c) 2026
 */
@@ -92,6 +92,9 @@ namespace alib5{
         /// 转换为string(General)
         /// @tparam copy 为true时返回std::string可用于直接构造对象，为false时返回std::string_view可以持有内部buffer的数据
         template<class T,bool copy = true> [[nodiscard]] auto to_string(T && v) noexcept;
+
+        /// 转换为其他类型
+        template<class T> auto to_T(std::string_view v,std::from_chars_result * result = nullptr) noexcept;
     };
 
     /// @brief 类似Go语言的退出处理
@@ -173,6 +176,8 @@ namespace alib5{
     namespace str{
         /// 更加高级的去除转义语序
         std::string_view ALIB5_API unescape(std::string_view in) noexcept;
+        /// 反向处理，对字符串进行转义化
+        std::string_view ALIB5_API escape(std::string_view in) noexcept;
         /// 去除空白字符，返回的是input的sub string_view
         std::string_view ALIB5_API trim(std::string_view input);
         // 分割字符串，可以识别整个字符串,vector中为对source的切片
@@ -502,6 +507,26 @@ namespace alib5{
             return "FATAL";
         default:
             return "?????";
+        }
+    }
+
+    template<class T> inline auto ext::to_T(std::string_view v,std::from_chars_result * iresult) noexcept{
+        auto report = [](std::error_code ec){
+            if(ec){
+                invoke_error(err_format_error,ec.message());
+            }
+        };
+    
+        if constexpr(std::is_arithmetic_v<T>){
+            T val;
+            auto result = std::from_chars(v.data(),v.data() + v.size(),val);
+            if(iresult) *iresult = result;
+            else report(std::make_error_code(result.ec));
+            return val;
+        }else if constexpr(IsStringLike<T>){
+            return (std::string_view)v;
+        }else{
+            static_assert(IsStringLike<T>,"Failed to convert the value!");
         }
     }
 }
