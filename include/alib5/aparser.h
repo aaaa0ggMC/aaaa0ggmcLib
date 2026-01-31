@@ -1,7 +1,7 @@
 /**@file aparser.h
-* @brief 简单的命令行解释器，由于之前的语法比较诡异
+* @brief 简单的命令行词法解析器，上一个版本语法比较诡异
 * @author aaaa0ggmc
-* @date 2026/01/30
+* @date 2026/01/31
 * @version 5.0
 * @copyright Copyright(c) 2026 
 */
@@ -64,23 +64,42 @@ namespace alib5{
             /// 数值，提供简单的分析以及cast，虽然和未来计划的aconf中的value功能重合了
             /// 但是这个命令行解释器本来也不是配置文件，不需要提供修改功能，因此单独出来
             struct Value{
+                /// bool
+                bool valid;
                 /// 数据
                 std::string_view data;
                 /// 构造数据
-                template<IsStringLike T> Value(T&& s):data(std::forward<T>(s)){}
+                template<IsStringLike T> Value(T&& s):data(std::forward<T>(s)){
+                    valid = true;
+                }
+                /// 标志invalid
+                Value(bool s):data(""){
+                    valid = false;
+                }
                 /// 隐式转换              
                 operator std::string_view() const{
+                    if(!valid){
+                        invoke_error(err_format_error,"Value is invalid!");
+                    }
                     return data;
+                }
+                /// 转化为bool
+                operator bool() const{
+                    return valid;
                 }
 
                 /// 转换，遇到问题会invoke_error
                 template<class T> auto as(){
+                    if(!valid){
+                        invoke_error(err_format_error,"Value is invalid!");
+                    }
                     return ext::to_T<T>(data);
                 }
 
                 /// 转换，遇到问题选择默认值
                 template<class T> auto value_or(T && default_val){
                     if constexpr(std::is_arithmetic_v<T>){
+                        if(!valid)return default_val;
                         std::from_chars_result r;
                         auto v = ext::to_T<T>(data,&r);
                         if(r.ec != std::errc() || (r.ptr) != data.data() + data.size()){
@@ -88,12 +107,14 @@ namespace alib5{
                         }
                         return v;
                     }else{
+                        if(!valid)return decltype(ext::to_T<T>(data))(default_val);
                         return ext::to_T<T>(data);
                     }
                 }
 
                 /// 判断转换是否顺利
                 template<class T> bool expect(){
+                    if(!valid)return false;
                     if constexpr(std::is_arithmetic_v<T>){
                         std::from_chars_result r;
                         ext::to_T<T>(data,&r);
@@ -106,6 +127,7 @@ namespace alib5{
 
                 /// @todo 留一个slot给validate
                 template<class Validator> bool validate(Validator && v){
+                    if(!valid)return false;
                     return v.validate(data);
                 }
             };
@@ -148,7 +170,7 @@ namespace alib5{
 
                 /// 判断当前cursor是否有效
                 operator bool() const noexcept {
-                    return matched;    
+                    return matched && cursor < data.size();    
                 }
                 
                 /// 组合cursor提供 || 语法
@@ -169,7 +191,8 @@ namespace alib5{
 
                 /// 检测下一个数据是否match
                 inline bool match(std::string_view data){
-                    return peek() == data;
+                    auto p = peek();
+                    return p && p == data;
                 }
                 inline bool match(std::span<const std::string_view> data){
                     for(auto c : data){
@@ -181,10 +204,17 @@ namespace alib5{
                     return match(std::span(data.begin(),data.end()));
                 }
 
+                /// 返回一个失效的analyser
+                Analyser ALIB5_API invalid() noexcept;
+
                 /// 步进下一条数据
                 Value ALIB5_API next() noexcept;
+                /// 步进下一条数据
+                std::pair<Value,Value> ALIB5_API next_value_bundle(std::string_view opt) noexcept;
                 /// 尝试访问下一条数据
                 Value ALIB5_API peek() const noexcept;
+                /// 数据组
+                std::pair<Value,Value> ALIB5_API peek_value_bundle(std::string_view opt) noexcept;
 
                 /// 跳过数据
                 inline void skip(size_t n = 1){
@@ -205,14 +235,14 @@ namespace alib5{
             inputs(parser.args.begin(),parser.args.end(),parser.resource){}
 
             /// 直接转换，方便直接进行操作
-            inline Cursor as_cursor() noexcept {
-                if(inputs.size() <= 1) {
+            inline Cursor as_cursor(size_t beg = 0) noexcept {
+                if(inputs.size() <= beg + 1) {
                     return Cursor{*this, inputs, 0, false};
                 }
                 return Cursor{
                     *this,
-                    std::span(inputs.begin(), inputs.end()),
-                    0,
+                    std::span(inputs.begin() + beg, inputs.end()),
+                    beg,
                     true
                 };
             }

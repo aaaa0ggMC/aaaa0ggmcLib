@@ -41,6 +41,14 @@ pparset_t::Analyser pcursor_t::sub() noexcept{
     };
 }
 
+pparset_t::Analyser pcursor_t::invalid() noexcept{
+    return Analyser{
+      m_analyser.parser,
+      {}  
+    };
+}
+
+
 Parser::Analyser Parser::Analyser::Cursor::commit() noexcept{
     panic_debug(!matched, "Cursor context is invalid!");
     if(applied)return Analyser(
@@ -67,7 +75,7 @@ Parser::Analyser Parser::Analyser::Cursor::commit() noexcept{
 Parser::Analyser::Value Parser::Analyser::Cursor::peek() const noexcept{
     panic_debug(!matched, "Cursor context is invalid!");
     size_t cursor = this->cursor;
-    if(!processed && cursor == 1 && prefix != ""){
+    if(!processed && prefix != ""){
         auto s = data[cursor - 1];
         if(s.starts_with(prefix)){
             size_t sz = prefix.size();
@@ -92,7 +100,7 @@ Parser::Analyser::Value Parser::Analyser::Cursor::peek() const noexcept{
 
 Parser::Analyser::Value Parser::Analyser::Cursor::next() noexcept{
     panic_debug(!matched, "Cursor context is invalid!");
-    if(!processed && cursor == 1 && prefix != ""){
+    if(!processed && prefix != ""){
         processed = true;
         auto s = data[cursor - 1];
         if(s.starts_with(prefix)){
@@ -114,6 +122,49 @@ Parser::Analyser::Value Parser::Analyser::Cursor::next() noexcept{
     }
     if(cursor >= data.size())return "";
     return data[cursor++];
+}
+
+std::pair<pvalue_t, pvalue_t> pcursor_t::peek_value_bundle(std::string_view opt) noexcept {
+    auto backup_cursor = this->cursor;
+    auto backup_processed = this->processed;
+    
+    auto result = next_value_bundle(opt);
+    
+    this->cursor = backup_cursor;
+    this->processed = backup_processed;
+    return result;
+}
+
+std::pair<pvalue_t,pvalue_t> pcursor_t::next_value_bundle(std::string_view opt) noexcept{
+    panic_debug(!matched, "Cursor context is invalid!");
+    if(prefix != "" && !processed){
+        return {prefix,next()};
+    }
+    
+    auto s = data[cursor - 1];
+    auto pos = s.find(opt);
+    Value k (false);
+    if(pos != s.npos){
+        // 说明找到了
+        k = s.substr(0,pos);
+    }else{
+        // 找不到,那么整个就是key
+        k = s;
+    }
+    // 备份状态
+    auto px = this->prefix;
+    auto py = this->opt_str;
+    auto pp = this->processed;
+    processed = false;
+    prefix = k;
+    opt_str = opt;
+    Value v = next();
+
+    prefix = px;
+    opt_str = py;
+    processed = pp;
+
+    return {k,v};
 }
 
 Parser::Analyser::Cursor Parser::Analyser::with_prefix(std::string_view data,std::string_view opt) noexcept{

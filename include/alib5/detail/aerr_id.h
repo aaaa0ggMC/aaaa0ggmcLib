@@ -10,7 +10,9 @@ namespace alib5{
     /// filesystem访问io错误
     constexpr int64_t err_filesystem_error = -2;
     /// 通用io错误
-    constexpr int64_t err_io_error = -2;
+    constexpr int64_t err_io_error = -3;
+    /// 路由冲突
+    constexpr int64_t err_conflict_router = -4;
     
 }
 
