@@ -1,7 +1,7 @@
 /**@file aparser.h
 * @brief 简单的命令行词法解析器，上一个版本语法比较诡异
 * @author aaaa0ggmc
-* @date 2026/01/31
+* @date 2026/02/01
 * @version 5.0
 * @copyright Copyright(c) 2026 
 */
@@ -76,16 +76,13 @@ namespace alib5{
                 Value(bool s):data(""){
                     valid = false;
                 }
-                /// 隐式转换              
-                operator std::string_view() const{
-                    if(!valid){
-                        invoke_error(err_format_error,"Value is invalid!");
-                    }
-                    return data;
-                }
                 /// 转化为bool
                 operator bool() const{
                     return valid;
+                }
+
+                std::string_view view() const {
+                    return data;
                 }
 
                 /// 转换，遇到问题会invoke_error
@@ -113,16 +110,17 @@ namespace alib5{
                 }
 
                 /// 判断转换是否顺利
-                template<class T> bool expect(){
+                template<class T> std::optional<T> expect(){
                     if(!valid)return false;
                     if constexpr(std::is_arithmetic_v<T>){
                         std::from_chars_result r;
-                        ext::to_T<T>(data,&r);
+                        auto v = ext::to_T<T>(data,&r);
                         if(r.ec != std::errc() || (r.ptr) != data.data() + data.size()){
-                            return false;
+                            return std::nullopt;
                         }
+                        return { v };
                     }
-                    return true;
+                    return { as<T>() };
                 }
 
                 /// @todo 留一个slot给validate
@@ -192,7 +190,7 @@ namespace alib5{
                 /// 检测下一个数据是否match
                 inline bool match(std::string_view data){
                     auto p = peek();
-                    return p && p == data;
+                    return p && p.data == data;
                 }
                 inline bool match(std::span<const std::string_view> data){
                     for(auto c : data){
@@ -263,17 +261,17 @@ namespace alib5{
             }
 
             /// 匹配完整的option
-            Cursor ALIB5_API with_opt(std::string_view opt) noexcept;
+            Cursor ALIB5_API with_opt(std::string_view opt,size_t beg = 1) noexcept;
             /// 匹配前缀，比如 data="--port" opt="="
             /// 将会匹配 "--port=xxx" "--port = xxx" "--port xxx" "--port =xxx"
             /// 如果希望一定要 "--port="连体并且不认"--port xxx"可以设置 data="-port=" opt=""
-            Cursor ALIB5_API with_prefix(std::string_view data,std::string_view opt = "") noexcept;
+            Cursor ALIB5_API with_prefix(std::string_view data,std::string_view opt = "",size_t beg = 1) noexcept;
         
             //// 下面是一些包装函数 ////
             /// 支持多个option
-            inline Cursor with_opts(std::span<const std::string_view> opts) noexcept{
+            inline Cursor with_opts(std::span<const std::string_view> opts,size_t beg = 1) noexcept{
                 for(auto v : opts){
-                    if(auto c = with_opt(v))return c;
+                    if(auto c = with_opt(v,beg))return c;
                 }
                 return Cursor{
                     *this,
@@ -282,13 +280,13 @@ namespace alib5{
                     false
                 };
             }
-            inline Cursor with_opts(std::initializer_list<std::string_view> opts) noexcept{
-                return with_opts(std::span<const std::string_view>(opts.begin(),opts.end()));
+            inline Cursor with_opts(std::initializer_list<std::string_view> opts,size_t beg = 1) noexcept{
+                return with_opts(std::span<const std::string_view>(opts.begin(),opts.end()),beg);
             }
             /// 支持多个prefix
-            inline Cursor with_prefixes(std::span<const std::string_view> prefixes,std::string_view opt_str) noexcept{
+            inline Cursor with_prefixes(std::span<const std::string_view> prefixes,std::string_view opt_str,size_t beg = 1) noexcept{
                 for(auto v : prefixes){
-                    if(auto c = with_prefix(v,opt_str))return c;
+                    if(auto c = with_prefix(v,opt_str,beg))return c;
                 }
                 return Cursor{
                     *this,
@@ -297,60 +295,60 @@ namespace alib5{
                     false
                 };
             }
-            inline Cursor with_prefixes(std::initializer_list<std::string_view> prefixes,std::string_view opt_str) noexcept{
-                return with_prefixes(std::span(prefixes.begin(),prefixes.end()),opt_str);
+            inline Cursor with_prefixes(std::initializer_list<std::string_view> prefixes,std::string_view opt_str,size_t beg = 1) noexcept{
+                return with_prefixes(std::span(prefixes.begin(),prefixes.end()),opt_str,beg);
             }
 
             //// 提供懒人级别的api ////
             /// 提取是否含有
-            inline bool extract_first_flag(std::string_view flag){
-                if(auto c =  with_opt(flag)){
+            inline bool extract_first_flag(std::string_view flag,size_t beg = 1){
+                if(auto c =  with_opt(flag,beg)){
                     c.commit();
                     return true;
                 }
                 return false;
             }
             /// 提取是否含有，！！！会移除所有重复的flag
-            inline bool extract_flag(std::string_view flag){
+            inline bool extract_flag(std::string_view flag,size_t beg = 1){
                 bool ret = false;
-                while(extract_first_flag(flag)){
+                while(extract_first_flag(flag,beg)){
                     ret = true;
                 }
                 return ret;
             }
             /// 会逐步提取所有重复内容直到没有额外信息
-            inline bool extract_first_any_flag(std::span<const std::string_view> flags){
+            inline bool extract_first_any_flag(std::span<const std::string_view> flags,size_t beg  = 1){
                 for(auto c : flags){
-                    if(extract_first_flag(c))return true;
+                    if(extract_first_flag(c,beg))return true;
                 }
                 return false;
             }
             /// 会逐步提取所有重复内容直到没有额外信息
-            inline bool extract_any_flag(std::span<const std::string_view> flags){
+            inline bool extract_any_flag(std::span<const std::string_view> flags,size_t beg = 1){
                 bool val = false;
                 for(auto c : flags){
-                    val |= extract_flag(c);
+                    val |= extract_flag(c,beg);
                 }
                 return val;
             }
             /// 会逐步提取所有重复内容直到没有额外信息
-            inline bool extract_any_flag(std::initializer_list<const std::string_view> flags){
-                return extract_any_flag(std::span(flags.begin(),flags.end()));
+            inline bool extract_any_flag(std::initializer_list<const std::string_view> flags,size_t beg = 1){
+                return extract_any_flag(std::span(flags.begin(),flags.end()),beg);
             }
 
             //// 对于 XXX = 这种具有赋值意味的东西
-            inline Value extract_an_option(std::string_view key,std::string_view opt = "="){
-                if(auto c = with_prefix(key)){
+            inline Value extract_an_option(std::string_view key,std::string_view opt = "=",size_t beg = 1){
+                if(auto c = with_prefix(key,opt,beg)){
                     Value v = c.next();
                     c.commit();
                     return v;
                 }
                 return "";
             }
-            inline std::pmr::vector<Value> extract_options(std::string_view key,std::string_view opt = "="){
+            inline std::pmr::vector<Value> extract_options(std::string_view key,std::string_view opt = "=",size_t beg = 1){
                 std::pmr::vector<Value> ret (parser.resource);
                 while(true){
-                    if(auto c = with_prefix(key,opt)){
+                    if(auto c = with_prefix(key,opt,beg)){
                         ret.emplace_back(c.next());
                         c.commit();
                         continue;
@@ -361,9 +359,9 @@ namespace alib5{
             }
 
             /// 支持别名的选项提取：extract_any_option({"--port", "-p"}, "8080")
-            inline Value extract_any_option(std::initializer_list<std::string_view> keys, std::string_view opt = "=") {
+            inline Value extract_any_option(std::initializer_list<std::string_view> keys, std::string_view opt = "=",size_t beg = 1) {
                 for(auto key : keys) {
-                    if(auto c = with_prefix(key, opt)) {
+                    if(auto c = with_prefix(key, opt,beg)) {
                         Value v = c.next();
                         c.commit();
                         return v;

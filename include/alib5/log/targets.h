@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 内置的输出对象，目前支持控制台输出，文件输出，以及多文件输出
  * @version 0.1
- * @date 2026/01/29
+ * @date 2026/02/01
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -27,9 +27,9 @@
 #define __internal_alib_pc _putchar_nolock
 #endif
 
-#define LOG_COLOR3(fore,back,style) alib::g3::lot::color(alib::g3::lot::Color::fore,alib::g3::lot::Color::back,alib::g3::lot::Style::style)
-#define LOG_COLOR2(fore,back) alib::g3::lot::color(alib::g3::lot::Color::fore,alib::g3::lot::Color::back)
-#define LOG_COLOR1(fore) alib::g3::lot::color(alib::g3::lot::Color::fore)
+#define LOG_COLOR3(fore,back,style) alib5::lot::color(alib5::lot::Color::fore,alib5::lot::Color::back,alib5::lot::Style::style)
+#define LOG_COLOR2(fore,back) alib5::lot::color(alib5::lot::Color::fore,alib5::lot::Color::back)
+#define LOG_COLOR1(fore) alib5::lot::color(alib5::lot::Color::fore)
 
 namespace alib5{
     namespace lot{

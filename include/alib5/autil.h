@@ -1,7 +1,7 @@
 /**@file autil.h
 * @brief 工具库，提供实用函数
 * @author aaaa0ggmc
-* @date 2026/01/30
+* @date 2026/02/01
 * @version 5.0
 * @copyright Copyright(c) 2026
 */
@@ -367,13 +367,13 @@ namespace alib5{
         /// 获取系统的CPU的品牌名
         std::string_view ALIB5_API get_cpu_brand() noexcept;
 
-        /// 内存占用结构体
+        /// 内存占用结构体,单位byte
         struct ALIB5_API ProgramMemUsage{
             mem_bytes memory;       ///< 内存占用
             mem_bytes virt_memory;  ///< 虚拟内存占用
         };
 
-        /// 全局内存占用结构体
+        /// 全局内存占用结构体,单位byte
         struct ALIB5_API GlobalMemUsage{
             //In linux,percent = phyUsed / phyTotal
             unsigned int percent;     ///< 占用百分比,详情有注意事项 @attention Linux上等于 physicalUsed/physicalTotal,Windows上使用API提供的dwMemoryLoad

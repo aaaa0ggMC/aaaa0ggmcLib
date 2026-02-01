@@ -156,7 +156,7 @@ std::pair<pvalue_t,pvalue_t> pcursor_t::next_value_bundle(std::string_view opt) 
     auto py = this->opt_str;
     auto pp = this->processed;
     processed = false;
-    prefix = k;
+    prefix = k.data;
     opt_str = opt;
     Value v = next();
 
@@ -167,8 +167,8 @@ std::pair<pvalue_t,pvalue_t> pcursor_t::next_value_bundle(std::string_view opt) 
     return {k,v};
 }
 
-Parser::Analyser::Cursor Parser::Analyser::with_prefix(std::string_view data,std::string_view opt) noexcept{
-    for(size_t i = 1;i < inputs.size();++i){
+Parser::Analyser::Cursor Parser::Analyser::with_prefix(std::string_view data,std::string_view opt,size_t beg) noexcept{
+    for(size_t i = beg;i < inputs.size();++i){
         if(inputs[i].starts_with(data)){
             auto c = Cursor{
             *this,
@@ -188,9 +188,9 @@ Parser::Analyser::Cursor Parser::Analyser::with_prefix(std::string_view data,std
     };
 }
 
-Parser::Analyser::Cursor Parser::Analyser::with_opt(std::string_view opt) noexcept{
+Parser::Analyser::Cursor Parser::Analyser::with_opt(std::string_view opt,size_t beg) noexcept{
     // 忽略掉header
-    for(size_t i = 1;i < inputs.size();++i){
+    for(size_t i = beg;i < inputs.size();++i){
         if(inputs[i] == opt)return Cursor{
             *this,
             std::span(inputs.begin() + i,inputs.end()),

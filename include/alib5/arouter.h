@@ -1,7 +1,7 @@
 /**@file arouter.h
 * @brief 简单的路径分发器
 * @author aaaa0ggmc
-* @date 2026/01/31
+* @date 2026/02/01
 * @version 5.0
 * @copyright Copyright(c) 2026 
 */
@@ -12,6 +12,9 @@
 namespace alib5{
     template<class T> concept JudgeFn = requires(T&&t,pcursor_t & cursor){
         { t(&cursor) } -> std::convertible_to<panalyser_t>;
+    };
+    template<class T> concept RoamerFn = requires(T&&t,panalyser_t & cursor){
+        { t(&cursor) } -> std::convertible_to<void>;
     };
 
     struct ALIB5_API RouterNode{
@@ -84,28 +87,8 @@ namespace alib5{
             // 恰好routernode是长时间引用
             RouterNode * parent;
 
-            inline Node Group(std::string_view name,std::optional<RouterNode::Dispatcher> dispatch = std::nullopt){
-                panic_debug(!parent,"Invalid group context");
-                [[unlikely]] if(!parent)return {NULL};
-                if(name.empty())return {parent};
-
-                auto rulep = RouterNode::Full;
-                RouterNode * n = nullptr;
-                if(name[0] == '{' && name.back() == '}'){
-                    name = name.substr(1,name.size()-2);
-                    rulep = RouterNode::Any;
-                }
-                std::pmr::string pname (str::unescape(name),ALIB5_DEFAULT_MEMORY_RESOURCE);
-                auto it = parent->children.find(pname);
-                if(it == parent->children.end()){
-                    n = &parent->children.emplace(pname,RouterNode{}).first->second;
-                    n->rule = rulep;
-                }else{
-                    n = &it->second;
-                }
-                if(dispatch)n->dispatcher = *dispatch;
-                return {n};
-            }
+            /// 产生子节点
+            Node ALIB5_API Group(std::string_view name,std::optional<RouterNode::Dispatcher> dispatch = std::nullopt);
 
             inline void dispatch(RouterNode::Dispatcher disp){
                 panic_debug(!parent,"Invalid group context");
@@ -131,15 +114,34 @@ namespace alib5{
             }
         };
 
+        inline void clear(){
+            root = RouterNode{};
+        }
+
         inline Node Group(std::string_view name,std::optional<RouterNode::Dispatcher> dispatch = std::nullopt){
             return Node{&root}.Group(name,dispatch);
         }
 
         bool ALIB5_API add_route(std::string_view node_name,const RouterNode & nodes) noexcept;
         /// @param remove_head 是否不关心第一个元素,这个关系到树的正确索引
-        template<JudgeFn Judge> inline DispatchResult match(panalyser_t parser,Judge && Fn,bool remove_head = true) noexcept;
-        template<JudgeFn Judge> inline DispatchResult match(Parser & parser,Judge && Fn,bool remove_head = true) noexcept{
-            return match(parser.analyse(),std::forward<Judge>(Fn),remove_head);
+        template<
+            bool keys = true,
+            bool analyser = true,
+            bool remains = true,
+            bool dispatchers = true,
+            JudgeFn Judge,
+            RoamerFn Roamer
+        >  DispatchResult match(panalyser_t parser,Judge && Fn,Roamer && Rn,bool remove_head) noexcept;
+        
+        template<
+            bool keys = true,
+            bool analyser = true,
+            bool remains = true,
+            bool dispatchers = true,
+            JudgeFn Judge,
+            RoamerFn Roamer
+        > inline DispatchResult match(Parser & parser,Judge && Fn,Roamer && Rn,bool remove_head = true) noexcept{
+            return match<keys,analyser,remains,dispatchers>(parser.analyse(),std::forward<Judge>(Fn),std::forward<Roamer>(Rn),remove_head);
         }
 
         /// 实际上的版本
@@ -165,7 +167,14 @@ namespace alib5{
 }
 
 namespace alib5{
-    template<JudgeFn Judge> inline Router::DispatchResult Router::match(panalyser_t parser,Judge && Fn,bool remove_head) noexcept{
+    template<
+        bool keys,
+        bool analyser,
+        bool remains,
+        bool dispatchers,
+        JudgeFn Judge,
+        RoamerFn Roamer 
+    > inline Router::DispatchResult Router::match(panalyser_t parser,Judge && Fn,Roamer && Rn,bool remove_head) noexcept{
         DispatchResult result;
         // 移除掉最开始的命令头
         // 一般为CLI的时候用到
@@ -179,7 +188,7 @@ namespace alib5{
         // 如果早退,理论上parser.inputs.size() == 0,判断条件为 > 1,是合理的
         while(parser && c && !focus->children.empty()){
             auto token = c.head();
-            auto it = focus->children.find(std::pmr::string(token,ALIB5_DEFAULT_MEMORY_RESOURCE));
+            auto it = focus->children.find(std::pmr::string(token.data,ALIB5_DEFAULT_MEMORY_RESOURCE));
             if(it != focus->children.end() && it->second.rule != RouterNode::Any){
                 focus = &(it->second);
             }else{
@@ -188,48 +197,71 @@ namespace alib5{
                 if(t.second){
                     focus = t.second;
                     // 存在any对象
-                    result.keys.emplace(
-                        std::pmr::string(t.first,ALIB5_DEFAULT_MEMORY_RESOURCE),
-                        std::pmr::string(token,ALIB5_DEFAULT_MEMORY_RESOURCE)
-                    );
+                    if constexpr(keys){
+                        result.keys.emplace(
+                            std::pmr::string(t.first,ALIB5_DEFAULT_MEMORY_RESOURCE),
+                            std::pmr::string(token.data,ALIB5_DEFAULT_MEMORY_RESOURCE)
+                        );
+                    }
                 }else{
                     // 连any都找不到那不就是到这里就结束了吗?
                     break;
                 }
             }
-            result.dispatches.push_back(focus->dispatcher);
+            if constexpr(dispatchers){
+                result.dispatches.push_back(focus->dispatcher);
+            }
             // 找到了,同时装载数据
             // 这里应该是直接把一大块全部拿走了
-            result.depth_analysers.push_back(Fn(&c));
+            if constexpr(analyser){
+                result.depth_analysers.push_back(Fn(&c));
+            }else Fn(&c);
             // 因为cursor不支持operator=复制,只支持构造复制
             if(c)c.commit();
             c.~Cursor();
             new (&c) pcursor_t(parser.as_cursor());
         }
         // 这里构造数据
-        if(c)c.commit();
+        // if(c)c.commit();
         bool need_build = true;
         /// 一般来讲只有这个是异常
         if(parser.inputs.size() == 1){
             std::pmr::string str (parser.inputs[0],ALIB5_DEFAULT_MEMORY_RESOURCE);
             auto it = focus->children.find(str);
+            RouterNode::Dispatcher disp;
+
             if(it != focus->children.end()){
                 need_build = false;
+                disp = it->second.dispatcher;
             }else if(focus->find_any().second != nullptr){
-                result.keys.emplace(
-                    std::pmr::string(focus->find_any().first,ALIB5_DEFAULT_MEMORY_RESOURCE),
-                    std::pmr::string(str,ALIB5_DEFAULT_MEMORY_RESOURCE)
-                );
+                if constexpr(keys){
+                    result.keys.emplace(
+                        std::pmr::string(focus->find_any().first,ALIB5_DEFAULT_MEMORY_RESOURCE),
+                        std::pmr::string(str,ALIB5_DEFAULT_MEMORY_RESOURCE)
+                    );
+                }
+                disp = focus->find_any().second->dispatcher;
                 need_build = false;
             }
             if(!need_build){
                 auto cc = parser.as_cursor();
-                result.dispatches.push_back(it->second.dispatcher);
-                result.depth_analysers.emplace_back(Fn(&cc));
-                result.remains = {};
+                if constexpr(dispatchers){
+                    result.dispatches.push_back(disp);
+                }
+                if constexpr(analyser){
+                    result.depth_analysers.emplace_back(Fn(&cc));
+                }else Fn(&cc);
+                if constexpr(remains) {
+                    result.remains = {};
+                }
             }
         }
-        if(need_build)result.remains.insert(result.remains.begin(),parser.inputs.begin(),parser.inputs.end());
+        if constexpr(remains){
+            if(need_build){
+                Rn(&parser);
+                result.remains.insert(result.remains.begin(),parser.inputs.begin(),parser.inputs.end());
+            }
+        }
         return result;
     }
 }

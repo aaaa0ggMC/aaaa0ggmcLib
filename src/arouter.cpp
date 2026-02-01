@@ -3,6 +3,29 @@
 
 using namespace alib5;
 
+Router::Node Router::Node::Group(std::string_view name,std::optional<RouterNode::Dispatcher> dispatch){
+    panic_debug(!parent,"Invalid group context");
+    [[unlikely]] if(!parent)return {NULL};
+    if(name.empty())return {parent};
+
+    auto rulep = RouterNode::Full;
+    RouterNode * n = nullptr;
+    if(name[0] == '{' && name.back() == '}'){
+        name = name.substr(1,name.size()-2);
+        rulep = RouterNode::Any;
+    }
+    std::pmr::string pname (str::unescape(name),ALIB5_DEFAULT_MEMORY_RESOURCE);
+    auto it = parent->children.find(pname);
+    if(it == parent->children.end()){
+        n = &parent->children.emplace(pname,RouterNode{}).first->second;
+        n->rule = rulep;
+    }else{
+        n = &it->second;
+    }
+    if(dispatch)n->dispatcher = *dispatch;
+    return {n};
+}
+
 bool Router::add_route(std::span<const std::string_view> path,RouterNode::Dispatcher dispatcher) noexcept {
     if(path.empty())return false;
     RouterNode root;
