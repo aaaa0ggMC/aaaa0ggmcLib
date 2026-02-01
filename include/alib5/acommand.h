@@ -8,6 +8,8 @@
 #ifndef ALIB5_ACOMMAND
 #define ALIB5_ACOMMAND
 #include <alib5/arouter.h>
+#include <alib5/alogger.h>
+#include <alib5/ecs/linear_storage.h>
 #include <unordered_set>
 
 namespace alib5{
@@ -57,6 +59,7 @@ namespace alib5{
             std::pmr::unordered_map<std::string_view, pvalue_t> & defaults;
             std::pmr::unordered_map<std::pmr::string,std::pmr::string> & keys;
             std::span<std::string_view> remains;
+            Command & cmd;
 
             /// 进行二次校验
             ALIB5_API std::string_view validate(const std::unordered_set<std::string_view> & allow) const noexcept;
@@ -100,6 +103,11 @@ namespace alib5{
                 return co;
             }
 
+            static inline CommandOutput with_code(int code){
+                CommandOutput co = code;
+                return co;
+            }
+
             static inline CommandOutput no_output(){
                 return false;
             }
@@ -130,6 +138,17 @@ namespace alib5{
             return 0;
         }
     public:
+        template<bool has_color = false> struct ALIB5_API HelpMessage{
+            Command & cmd;
+
+            inline HelpMessage<true> color(){
+                HelpMessage<true> h = *this;
+                return h;
+            }
+
+            template<class CTX> CTX&& self_forward(CTX&& ctx) noexcept;
+        };
+
 
         template<detail::IsRouteHandler<CommandOutput,CommandInput> Fn> 
         inline rdispatcher_t register_handler(Fn && f){
@@ -232,5 +251,121 @@ namespace alib5{
     using command_in_t = const Command::CommandInput &;
     using command_out_t = Command::CommandOutput;
 };
+
+namespace alib5{
+    template<bool v> template<class CTX> inline CTX&& Command::HelpMessage<v>::self_forward(CTX&& ctx) noexcept{
+        static constexpr std::string_view STEP = "    ";
+        static constexpr std::string_view BAR  = "│   ";
+        static constexpr std::string_view TEE  = "├── ";
+        static constexpr std::string_view ELB  = "└── ";
+        constexpr auto c_lblue = LOG_COLOR1(LBlue);
+        constexpr auto c_seps = LOG_COLOR3(Gray,None,Dim);
+        constexpr auto c_reset = LOG_COLOR3(None,None,None);
+        constexpr auto c_bwhite = LOG_COLOR3(White,None,Bold);
+        constexpr auto c_yellow = LOG_COLOR1(Yellow);
+
+        // 输出命令,DFS查询
+        struct NN{
+            RouterNode * val;
+            std::string_view name;
+        };
+        std::deque<NN> nodes;
+        ecs::detail::MonoticBitSet bits;
+        
+        for(auto & [key,value] : cmd.router.root.children){
+            nodes.emplace_back(NN{&value,key});
+        }
+
+        int depth = 0;
+        while(!nodes.empty()){
+            NN n = nodes.back();
+            nodes.pop_back();
+            auto fn = [&]{
+                std::move(ctx) << c_seps;
+                for(int i = 0;i < depth -1;++i)
+                    std::move(ctx) << (bits.get(i + 1) ? STEP : BAR);
+
+                bits.ensure(depth + 1);
+                if(depth >= 1){
+                    if(nodes.empty() || nodes.back().val == nullptr){
+                        std::move(ctx) << ELB;
+                        bits.set(depth);
+                    }else{
+                        std::move(ctx) << TEE;
+                        bits.reset(depth);
+                    }
+                }
+                if(n.val->rule != RouterNode::Any){
+                    std::move(ctx) << c_reset << 
+                    (n.val->children.empty()?
+                        c_lblue:
+                        c_bwhite
+                    )
+                 << n.name << c_reset << "\n";
+                }else{
+                    std::move(ctx) << c_reset << c_yellow <<
+                    "{" << n.name << "}" << c_reset << "\n";
+                }
+            };
+
+            if(n.val == nullptr){
+                --depth;
+                continue;
+            }
+
+            fn();
+
+            if(n.val->children.size()){
+                nodes.emplace_back(NN{nullptr,""});
+                /// 我觉得还是按照字母表排序吧
+                std::size_t s1 = nodes.size();
+                for(auto & [key,value] : (n.val)->children){
+                    nodes.emplace_back(NN{&value,key});
+                }
+                std::sort(nodes.begin() + s1,nodes.end(),
+                    [](const NN& a, const NN& b){
+                        return a.name > b.name;
+                    }
+                );
+                ++depth;
+            }
+        }
+
+        std::move(ctx) << c_bwhite << "\nSupport options:" << c_reset << "\n";
+        std::vector<std::string_view> options;
+        options.reserve(cmd.registered_options.size());
+        int max_len = 0;
+        for(auto & vv : cmd.registered_options){
+            if(vv.size() > max_len)max_len = vv.size();
+            options.emplace_back(vv);
+        }
+
+        std::sort(
+            options.begin(),
+            options.end(),
+            [](const std::string_view& a, const std::string_view& b){
+                return a < b;
+            }
+        );
+        
+        
+        max_len = max_len + 1;
+        for(auto it = options.begin();it != options.end();){
+            std::string_view desc = "";
+            auto whit = cmd.descriptions.find(std::pmr::string(*it,ALIB5_DEFAULT_MEMORY_RESOURCE));
+            if(whit != cmd.descriptions.end()){
+                desc = whit->second;       
+            }
+            std::move(ctx) << c_yellow << STEP << log_tfmt("{:<{}}") 
+            << std::make_format_args(*it,max_len) << c_reset <<
+            "| "
+            << desc
+            << ((++it == options.end())?"":"\n");
+        }
+
+        return std::move(ctx);
+    }
+
+}
 
 #endif

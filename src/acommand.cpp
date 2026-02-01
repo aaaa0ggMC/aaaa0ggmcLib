@@ -100,7 +100,8 @@ std::pmr::vector<Command::CommandOutput> Command::__dispatch(bool rm){
                     find_prefixes,
                     defaults,
                     result.keys,
-                    result.remains
+                    result.remains,
+                    *this
                 }
             );
             if(co){
