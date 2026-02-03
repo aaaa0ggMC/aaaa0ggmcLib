@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 各种配置文件
  * @version 0.1
- * @date 2026/01/29
+ * @date 2026/02/03
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -56,6 +56,9 @@ namespace alib5{
         bool out_level;
         /// @brief 用来转换level的函数，默认为 default_level_cast
         LevelCastFn level_cast;
+
+        /// @brief SEPARATOR,每条日志末尾的信息
+        std::string_view separator;
 
         /// @brief 默认的level cast,适配LogLevel这个enum
         static std::string_view default_level_cast(int level_in);

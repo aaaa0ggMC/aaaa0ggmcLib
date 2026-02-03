@@ -84,7 +84,7 @@ bool Router::add_route(std::string_view node_name,const RouterNode & nodes) noex
             // 既然是全新node，直接覆盖所有规则就行了
             current_focus = 
                 &(root.children.emplace(
-                    std::pmr::string(node_name,ALIB5_DEFAULT_MEMORY_RESOURCE),
+                    node_name,
                     nodes
                 ).first->second);
         }
@@ -120,7 +120,7 @@ bool Router::add_route(std::string_view node_name,const RouterNode & nodes) noex
                     }
                     // 这是一个新的节点，直接照着emplace就行
                     auto & v = current->children.emplace(
-                        std::pmr::string(name,ALIB5_DEFAULT_MEMORY_RESOURCE),
+                        name,
                         t
                     ).first->second;
                 }else{

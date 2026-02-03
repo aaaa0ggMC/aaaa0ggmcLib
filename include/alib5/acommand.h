@@ -1,7 +1,7 @@
 /**@file acommand.h
 * @brief 简单的命令行解释器
 * @author aaaa0ggmc
-* @date 2026/02/01
+* @date 2026/02/03
 * @version 5.0
 * @copyright Copyright(c) 2026 
 */
@@ -41,7 +41,11 @@ namespace alib5{
         /// 内部的索引
         Router router;
         /// 支持的选项
-        std::pmr::unordered_set<std::pmr::string> registered_options;
+        std::pmr::unordered_set<
+            std::pmr::string,
+            detail::TransparentStringHash,
+            detail::TransparentStringEqual
+        > registered_options;
         /// 支持的prefix,默认所有的opt_str为"="
         std::pmr::unordered_set<std::pmr::string> registered_prefixes;
         /// 支持的默认值,key直接引用registered_prefixes
@@ -49,7 +53,12 @@ namespace alib5{
         // 这个是用于保存value的池子
         std::pmr::unordered_set<std::pmr::string> default_values;
         /// 介绍
-        std::pmr::unordered_map<std::pmr::string, std::pmr::string> descriptions;
+        std::pmr::unordered_map<
+            std::pmr::string, 
+            std::pmr::string,
+            detail::TransparentStringHash,
+            detail::TransparentStringEqual
+        > descriptions;
 
         struct CommandInput{
             bool main;
@@ -57,28 +66,57 @@ namespace alib5{
             std::pmr::vector<std::pmr::unordered_set<std::string_view>> & opts;
             std::pmr::vector<std::pmr::unordered_map<std::string_view,pvalue_t>> & prefixes;
             std::pmr::unordered_map<std::string_view, pvalue_t> & defaults;
-            std::pmr::unordered_map<std::pmr::string,std::pmr::string> & keys;
+            std::pmr::unordered_map<
+                std::pmr::string,
+                std::pmr::string,
+                detail::TransparentStringHash,
+                detail::TransparentStringEqual
+            > & keys;
             std::span<std::string_view> remains;
+            std::span<std::string_view> routes;
             Command & cmd;
 
             /// 进行二次校验
             ALIB5_API std::string_view validate(const std::unordered_set<std::string_view> & allow) const noexcept;
 
-            /// 获取value
-            ALIB5_API pvalue_t get(std::string_view d) const noexcept;
+            /// 获取value,depth为层次,小于0定位当前层级,大于最大层次返回pvalue_t(false)(invalid)
+            ALIB5_API pvalue_t get(std::string_view d,int depth = -1) const noexcept;
+
+            /// 获取更加多层次的数据,返回对应数值以及找到的对应层级
+            inline std::pair<pvalue_t,int> gets(std::string_view d,int begin = -1,int end = std::numeric_limits<int>::max()){
+                if(begin < 0)begin = depth;
+                for(int i = begin;i < std::min(end,(int)prefixes.size());++i){
+                    if(auto val = get(d,i)){
+                        return {val,i};
+                    }
+                }
+                return {false,-1};
+            }
 
             /// 获取key
             inline pvalue_t key(std::string_view d) const noexcept{
-                auto it = keys.find(std::pmr::string(d,ALIB5_DEFAULT_MEMORY_RESOURCE));
+                auto it = keys.find(d);
                 if(it != keys.end()){
                     return it->second;
                 }
                 return false;
             }
 
-            inline bool check(std::string_view d) const noexcept{
+            inline bool check(std::string_view d,int depth = -1) const noexcept{
+                if(depth < 0)depth = this->depth;
                 if(depth >= opts.size())return false;
                 return opts[depth].find(d) != opts[depth].end();
+            }
+
+            /// 获取更加多层次的数据,返回对应数值以及找到的对应层级
+            inline std::pair<bool,int> checks(std::string_view d,int begin = -1,int end = std::numeric_limits<int>::max()){
+                if(begin < 0)begin = depth;
+                for(int i = begin;i < std::min(end,(int)prefixes.size());++i){
+                    if(check(d,i)){
+                        return {true,i};
+                    }
+                }
+                return {false,-1};
             }
         };
 
@@ -142,13 +180,17 @@ namespace alib5{
             Command & cmd;
 
             inline HelpMessage<true> color(){
-                HelpMessage<true> h = *this;
+                HelpMessage<true> h = { cmd };
                 return h;
             }
 
             template<class CTX> CTX&& self_forward(CTX&& ctx) noexcept;
         };
 
+        /// 生成帮助信息
+        HelpMessage<false> help(){
+            return HelpMessage<false>{*this };
+        }
 
         template<detail::IsRouteHandler<CommandOutput,CommandInput> Fn> 
         inline rdispatcher_t register_handler(Fn && f){
@@ -180,10 +222,9 @@ namespace alib5{
         void register_toggles(std::initializer_list<detail::Toggle> list) {
             auto res = ALIB5_DEFAULT_MEMORY_RESOURCE;
             for (auto const& bundle : list) {
-                std::pmr::string pname(bundle.name, res);
-                registered_options.emplace(pname);
+                registered_options.emplace(bundle.name);
                 if(bundle.description != ""){
-                    descriptions.emplace(pname,std::pmr::string(bundle.description,ALIB5_DEFAULT_MEMORY_RESOURCE));
+                    descriptions.emplace(bundle.name,bundle.description);
                 }
             }
         }
@@ -192,15 +233,13 @@ namespace alib5{
         void register_options(std::initializer_list<detail::BundleWithDefault> list) {
             auto res = ALIB5_DEFAULT_MEMORY_RESOURCE;
             for (auto const& bundle : list) {
-                std::pmr::string pname(bundle.name, res);
-                auto rp = registered_prefixes.emplace(pname);
+                auto rp = registered_prefixes.emplace(bundle.name);
                 if(bundle.value != ""){
-                    std::pmr::string pval(bundle.value, res);
-                    registered_options.emplace(pname);
-                    defaults.emplace(*rp.first, *default_values.emplace(std::move(pval)).first);
+                    registered_options.emplace(bundle.name);
+                    defaults.emplace(*rp.first, *default_values.emplace(bundle.value).first);
                 }
                 if(bundle.description != ""){
-                    descriptions.emplace(pname,std::pmr::string(bundle.description,ALIB5_DEFAULT_MEMORY_RESOURCE));
+                    descriptions.emplace(bundle.name,bundle.description);
                 }
             }
         }
@@ -253,16 +292,24 @@ namespace alib5{
 };
 
 namespace alib5{
-    template<bool v> template<class CTX> inline CTX&& Command::HelpMessage<v>::self_forward(CTX&& ctx) noexcept{
+    template<bool with_color> template<class CTX> inline CTX&& Command::HelpMessage<with_color>::self_forward(CTX&& ctx) noexcept{
+        constexpr auto select_color = []<class T>(T && val){
+            if constexpr(with_color){
+                return std::forward<T>(val);
+            }else{
+                return log_nop{};
+            }
+        };
+        
         static constexpr std::string_view STEP = "    ";
         static constexpr std::string_view BAR  = "│   ";
         static constexpr std::string_view TEE  = "├── ";
         static constexpr std::string_view ELB  = "└── ";
-        constexpr auto c_lblue = LOG_COLOR1(LBlue);
-        constexpr auto c_seps = LOG_COLOR3(Gray,None,Dim);
-        constexpr auto c_reset = LOG_COLOR3(None,None,None);
-        constexpr auto c_bwhite = LOG_COLOR3(White,None,Bold);
-        constexpr auto c_yellow = LOG_COLOR1(Yellow);
+        constexpr auto c_lblue = select_color(LOG_COLOR1(LBlue));
+        constexpr auto c_seps = select_color(LOG_COLOR3(Gray,None,Dim));
+        constexpr auto c_reset = select_color(LOG_COLOR3(None,None,None));
+        constexpr auto c_bwhite = select_color(LOG_COLOR3(White,None,Bold));
+        constexpr auto c_yellow = select_color(LOG_COLOR1(Yellow));
 
         // 输出命令,DFS查询
         struct NN{
@@ -330,39 +377,98 @@ namespace alib5{
                 ++depth;
             }
         }
+        // 移除多余的空行
+        bool remove_more = true;
+        
+        if(cmd.registered_options.size()){
+            remove_more = false;
+            std::move(ctx) << c_bwhite << "\nSupport toggles:" << c_reset << "\n";
+            std::vector<std::string_view> options;
+            options.reserve(cmd.registered_options.size());
+            int max_len = 0;
+            for(auto & vv : cmd.registered_options){
+                // 属于prefix
+                if(cmd.registered_prefixes.find(vv) != cmd.registered_prefixes.end())continue;
+                if(vv.size() > max_len)max_len = vv.size();
+                options.emplace_back(vv);
+            }
 
-        std::move(ctx) << c_bwhite << "\nSupport options:" << c_reset << "\n";
-        std::vector<std::string_view> options;
-        options.reserve(cmd.registered_options.size());
-        int max_len = 0;
-        for(auto & vv : cmd.registered_options){
-            if(vv.size() > max_len)max_len = vv.size();
-            options.emplace_back(vv);
+            std::sort(
+                options.begin(),
+                options.end(),
+                [](const std::string_view& a, const std::string_view& b){
+                    return a < b;
+                }
+            );
+            
+            
+            max_len = max_len + 1;
+            for(auto it = options.begin();it != options.end();){
+                std::string_view desc = "";
+                auto whit = cmd.descriptions.find(*it);
+                if(whit != cmd.descriptions.end()){
+                    desc = whit->second;       
+                }
+                std::move(ctx) << c_yellow << STEP << log_tfmt("{:<{}}") 
+                << std::make_format_args(*it,max_len) << c_reset <<
+                "| "
+                << desc
+                << ((++it == options.end())?"":"\n");
+            }
         }
 
-        std::sort(
-            options.begin(),
-            options.end(),
-            [](const std::string_view& a, const std::string_view& b){
-                return a < b;
+        if(cmd.registered_prefixes.size()){
+            remove_more = false;
+            std::move(ctx) << c_bwhite << "\nSupport options:" << c_reset << "\n";
+            std::vector<std::string_view> prefixes;
+            prefixes.reserve(cmd.registered_prefixes.size());
+            int max_len = 0;
+            int max_len_default = 0;
+            for(auto & vv : cmd.registered_prefixes){
+                if(vv.size() > max_len)max_len = vv.size();
+                auto it = cmd.defaults.find(vv);
+                if(it != cmd.defaults.end()){
+                    if(it->second.data.length() > max_len_default)max_len_default = it->second.data.length();
+                }
+                prefixes.emplace_back(vv);
             }
-        );
-        
-        
-        max_len = max_len + 1;
-        for(auto it = options.begin();it != options.end();){
-            std::string_view desc = "";
-            auto whit = cmd.descriptions.find(std::pmr::string(*it,ALIB5_DEFAULT_MEMORY_RESOURCE));
-            if(whit != cmd.descriptions.end()){
-                desc = whit->second;       
-            }
-            std::move(ctx) << c_yellow << STEP << log_tfmt("{:<{}}") 
-            << std::make_format_args(*it,max_len) << c_reset <<
-            "| "
-            << desc
-            << ((++it == options.end())?"":"\n");
-        }
 
+            std::sort(
+                prefixes.begin(),
+                prefixes.end(),
+                [](const std::string_view& a, const std::string_view& b){
+                    return a < b;
+                }
+            );
+            
+            
+            max_len = max_len + 1;
+            max_len_default += 1;
+
+            for(auto it = prefixes.begin();it != prefixes.end();){
+                std::string_view desc = "";
+                std::string_view defc = "";
+                auto whit = cmd.descriptions.find(*it);
+                if(whit != cmd.descriptions.end()){
+                    desc = whit->second;       
+                }
+                auto def = cmd.defaults.find(*it);
+                if(def != cmd.defaults.end()){
+                    defc = def->second.data;
+                }
+
+                std::move(ctx) << c_yellow << STEP << log_tfmt("{:<{}}") 
+                << std::make_format_args(*it,max_len) << c_reset <<
+                "| " << log_tfmt("{:<{}}")
+                << std::make_format_args(defc,max_len_default) <<
+                "| "
+                << desc
+                << ((++it == prefixes.end())?"":"\n");
+            }
+        }
+        
+        if(remove_more)
+            std::move(ctx) << log_erase(1);
         return std::move(ctx);
     }
 

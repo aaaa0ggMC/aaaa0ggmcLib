@@ -2,7 +2,7 @@
 * @brief 与日志有关的函数库
 * @author aaaa0ggmc
 * @last-date 2025/04/04
-* @date 2026/01/29 
+* @date 2026/02/03 
 * @version 5.0
 * @copyright Copyright(C)2025
 ********************************
@@ -76,14 +76,7 @@ namespace alib5{
     constexpr int config_pool_reserve_size = 64;
 
     /// @brief 默认的loglevel标识，纯粹方便使用的
-    enum class LogLevel : int{
-        Trace = 0, ///< Trace级别，基本上没什么业务意义
-        Debug = 1, ///< Debug级别，一般用在Debug环境下
-        Info  = 2, ///< Info 级别，普通日志信息
-        Warn  = 3, ///< Warn 级别，出了点小问题
-        Error = 4, ///< Error级别，问题大了点，能接受
-        Fatal = 5  ///< Fatal级别，不能接受的超级大问题
-    };
+    using LogLevel = enum Severity;
 
     /// @brief 日志核心，负责日志队列维护、转发
     struct ALIB5_API Logger{
@@ -341,6 +334,8 @@ namespace alib5{
         out_level = true;
         disable_extra_information = false;
         level_cast = default_level_cast;
+        // 默认换行
+        separator = "\n";
     }
 
     inline std::string_view LogMsgConfig::default_level_cast(int level_in){
@@ -424,7 +419,7 @@ namespace alib5{
         scomposed.append(":");
         
         scomposed += body;
-        scomposed.append("\n");
+        scomposed.append(cfg.separator);
         generated = true;
 
         return scomposed;

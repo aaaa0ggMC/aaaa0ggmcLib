@@ -32,7 +32,7 @@ pparset_t::Analyser pcursor_t::sub() noexcept{
     panic_debug(!matched, "Cursor context is invalid!");
     if(applied)return Analyser(
         m_analyser.parser,
-        cached_data
+        *cached_data
     );
     return Analyser{
       m_analyser.parser,
@@ -53,12 +53,14 @@ Parser::Analyser Parser::Analyser::Cursor::commit() noexcept{
     panic_debug(!matched, "Cursor context is invalid!");
     if(applied)return Analyser(
         m_analyser.parser,
-        cached_data
+        *cached_data
     );
     applied = true;
-    cached_data.clear();
-    cached_data.insert(
-        cached_data.end(),
+    cached_data.emplace(
+        m_analyser.parser.resource
+    );
+    cached_data->insert(
+        cached_data->end(),
         data.begin(),
         data.begin() + cursor);
     
@@ -68,7 +70,7 @@ Parser::Analyser Parser::Analyser::Cursor::commit() noexcept{
     );
     return Analyser(
         m_analyser.parser,
-        cached_data
+        *cached_data
     );
 }
 

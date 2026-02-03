@@ -1,7 +1,7 @@
 /**@file arouter.h
 * @brief 简单的路径分发器
 * @author aaaa0ggmc
-* @date 2026/02/01
+* @date 2026/02/03
 * @version 5.0
 * @copyright Copyright(c) 2026 
 */
@@ -46,8 +46,8 @@ namespace alib5{
         std::pmr::unordered_map<
             std::pmr::string,
             RouterNode,
-            std::hash<std::string_view>, 
-            std::equal_to<>
+            detail::TransparentStringHash, 
+            detail::TransparentStringEqual
         > children;
 
         RouterNode(std::pmr::memory_resource * __a = ALIB5_DEFAULT_MEMORY_RESOURCE):children(__a){}
@@ -78,9 +78,31 @@ namespace alib5{
 
         struct ALIB5_API DispatchResult{
             std::vector<RouterNode::Dispatcher> dispatches;
-            std::pmr::unordered_map<std::pmr::string,std::pmr::string> keys;
+            std::pmr::unordered_map<
+                std::pmr::string,
+                std::pmr::string,    
+                detail::TransparentStringHash,
+                detail::TransparentStringEqual
+            > keys;
             std::pmr::vector<panalyser_t> depth_analysers;
-            std::vector<std::string_view> remains; // head为最后一个层级的起始子
+            std::pmr::vector<std::string_view> remains; // head为最后一个层级的起始子
+            std::pmr::vector<std::string_view> routes;
+        };
+
+        struct MatchSettings{
+            /// 是否生成{any}节点对应的k-v
+            bool keys = true;
+            /// 是否生成每层的解析器
+            bool analyser = true;
+            /// 是否生成最终剩下的数据
+            bool remains = true;
+            /// 是否保存走过的dispatcher
+            bool dispatchers = true;
+            /// 是否保存走过的路径到
+            bool routes = true;
+        };
+        constexpr static MatchSettings default_match_settings = MatchSettings{
+            true,true,true,true,true
         };
         
         struct Node{
@@ -125,23 +147,17 @@ namespace alib5{
         bool ALIB5_API add_route(std::string_view node_name,const RouterNode & nodes) noexcept;
         /// @param remove_head 是否不关心第一个元素,这个关系到树的正确索引
         template<
-            bool keys = true,
-            bool analyser = true,
-            bool remains = true,
-            bool dispatchers = true,
+            MatchSettings settings = default_match_settings,
             JudgeFn Judge,
             RoamerFn Roamer
         >  DispatchResult match(panalyser_t parser,Judge && Fn,Roamer && Rn,bool remove_head) noexcept;
         
         template<
-            bool keys = true,
-            bool analyser = true,
-            bool remains = true,
-            bool dispatchers = true,
+            MatchSettings settings = default_match_settings,
             JudgeFn Judge,
             RoamerFn Roamer
         > inline DispatchResult match(Parser & parser,Judge && Fn,Roamer && Rn,bool remove_head = true) noexcept{
-            return match<keys,analyser,remains,dispatchers>(parser.analyse(),std::forward<Judge>(Fn),std::forward<Roamer>(Rn),remove_head);
+            return match<settings>(parser.analyse(),std::forward<Judge>(Fn),std::forward<Roamer>(Rn),remove_head);
         }
 
         /// 实际上的版本
@@ -168,10 +184,7 @@ namespace alib5{
 
 namespace alib5{
     template<
-        bool keys,
-        bool analyser,
-        bool remains,
-        bool dispatchers,
+        Router::MatchSettings conf,
         JudgeFn Judge,
         RoamerFn Roamer 
     > inline Router::DispatchResult Router::match(panalyser_t parser,Judge && Fn,Roamer && Rn,bool remove_head) noexcept{
@@ -188,32 +201,38 @@ namespace alib5{
         // 如果早退,理论上parser.inputs.size() == 0,判断条件为 > 1,是合理的
         while(parser && c && !focus->children.empty()){
             auto token = c.head();
-            auto it = focus->children.find(std::pmr::string(token.data,ALIB5_DEFAULT_MEMORY_RESOURCE));
+            auto it = focus->children.find(token.data);
             if(it != focus->children.end() && it->second.rule != RouterNode::Any){
                 focus = &(it->second);
+                if constexpr(conf.routes){
+                    result.routes.emplace_back(it->first);
+                }
             }else{
                 // 可能存在any
                 auto t = focus->find_any();
                 if(t.second){
                     focus = t.second;
                     // 存在any对象
-                    if constexpr(keys){
+                    if constexpr(conf.keys){
                         result.keys.emplace(
-                            std::pmr::string(t.first,ALIB5_DEFAULT_MEMORY_RESOURCE),
-                            std::pmr::string(token.data,ALIB5_DEFAULT_MEMORY_RESOURCE)
+                            t.first,
+                            token.data
                         );
+                    }
+                    if constexpr(conf.routes){
+                        result.routes.emplace_back(t.first);
                     }
                 }else{
                     // 连any都找不到那不就是到这里就结束了吗?
                     break;
                 }
             }
-            if constexpr(dispatchers){
+            if constexpr(conf.dispatchers){
                 result.dispatches.push_back(focus->dispatcher);
             }
             // 找到了,同时装载数据
             // 这里应该是直接把一大块全部拿走了
-            if constexpr(analyser){
+            if constexpr(conf.analyser){
                 result.depth_analysers.push_back(Fn(&c));
             }else Fn(&c);
             // 因为cursor不支持operator=复制,只支持构造复制
@@ -226,40 +245,47 @@ namespace alib5{
         bool need_build = true;
         /// 一般来讲只有这个是异常
         if(parser.inputs.size() == 1){
-            std::pmr::string str (parser.inputs[0],ALIB5_DEFAULT_MEMORY_RESOURCE);
-            auto it = focus->children.find(str);
+            auto it = focus->children.find(parser.inputs[0]);
             RouterNode::Dispatcher disp;
 
             if(it != focus->children.end()){
                 need_build = false;
                 disp = it->second.dispatcher;
+                if constexpr(conf.routes){
+                    result.routes.emplace_back(it->first);
+                }
             }else if(focus->find_any().second != nullptr){
-                if constexpr(keys){
+                if constexpr(conf.keys){
                     result.keys.emplace(
-                        std::pmr::string(focus->find_any().first,ALIB5_DEFAULT_MEMORY_RESOURCE),
-                        std::pmr::string(str,ALIB5_DEFAULT_MEMORY_RESOURCE)
+                        focus->find_any().first,
+                        parser.inputs[0]
                     );
                 }
                 disp = focus->find_any().second->dispatcher;
                 need_build = false;
+                if constexpr(conf.routes){
+                    result.routes.emplace_back(focus->find_any().first);
+                }
             }
             if(!need_build){
                 auto cc = parser.as_cursor();
-                if constexpr(dispatchers){
+                if constexpr(conf.dispatchers){
                     result.dispatches.push_back(disp);
                 }
-                if constexpr(analyser){
+                if constexpr(conf.analyser){
                     result.depth_analysers.emplace_back(Fn(&cc));
                 }else Fn(&cc);
-                if constexpr(remains) {
+                if constexpr(conf.remains) {
                     result.remains = {};
                 }
             }
         }
-        if constexpr(remains){
-            if(need_build){
+        if constexpr(conf.remains){
+            if(need_build && parser.inputs.size()){
+                parser.inputs.insert(
+                    parser.inputs.begin(),"--REMAINS--");
                 Rn(&parser);
-                result.remains.insert(result.remains.begin(),parser.inputs.begin(),parser.inputs.end());
+                result.remains.insert(result.remains.begin(),parser.inputs.begin() + 1,parser.inputs.end());
             }
         }
         return result;

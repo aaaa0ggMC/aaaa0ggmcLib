@@ -1,7 +1,7 @@
 /**@file aparser.h
 * @brief 简单的命令行词法解析器，上一个版本语法比较诡异
 * @author aaaa0ggmc
-* @date 2026/02/01
+* @date 2026/02/03
 * @version 5.0
 * @copyright Copyright(c) 2026 
 */
@@ -111,7 +111,7 @@ namespace alib5{
 
                 /// 判断转换是否顺利
                 template<class T> std::optional<T> expect(){
-                    if(!valid)return false;
+                    if(!valid)return std::nullopt;
                     if constexpr(std::is_arithmetic_v<T>){
                         std::from_chars_result r;
                         auto v = ext::to_T<T>(data,&r);
@@ -137,11 +137,9 @@ namespace alib5{
                 Analyser & m_analyser;
                 /// 自己持有的数据
                 std::span<std::string_view> data;
+                
                 /// 从m_analyser截取时的索引
                 size_t parent_index { 0 };
-                /// 是否是有效的cursor
-                bool matched = false;
-
                 /// 目前游标位置，只能往前走
                 size_t cursor { 1 };
 
@@ -150,25 +148,29 @@ namespace alib5{
                 std::string_view prefix { "" };
                 /// optional prefix中的内容
                 std::string_view opt_str { "" };
+
+                /// 是否是有效的cursor
+                bool matched = false;
                 /// prefix 是否以及被处理
                 bool processed {false};
                 /// 是否已经commit
                 bool applied {false};
 
                 /// 这个是缓存数据
-                std::pmr::vector<std::string_view> cached_data;
+                std::optional<std::pmr::vector<std::string_view>> cached_data {std::nullopt};
 
                 /// 构造
-                Cursor(Analyser & ana,std::span<std::string_view> d,size_t pi,bool mt):
+                Cursor(Analyser & ana,std::span<std::string_view> d,size_t pi,bool mt,size_t beg = 1):
                 m_analyser{ana},
                 data(d),
                 parent_index(pi),
                 matched(mt),
-                cached_data(m_analyser.parser.resource){}
+                cursor(beg){}
 
                 /// 判断当前cursor是否有效
                 operator bool() const noexcept {
-                    return matched && cursor < data.size();    
+                    /// 理论上可以走到end(),因为subspan不包含end
+                    return matched && cursor <= data.size();    
                 }
                 
                 /// 组合cursor提供 || 语法

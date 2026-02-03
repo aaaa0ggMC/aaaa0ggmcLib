@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 内置的输出对象，目前支持控制台输出，文件输出，以及多文件输出
  * @version 0.1
- * @date 2026/02/01
+ * @date 2026/02/03
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -14,6 +14,7 @@
 #include <alib5/log/kernel.h>
 #include <alib5/adebug.h>
 #include <functional>
+#include <future>
 #include <stdio.h>
 
 #ifdef __linux__
@@ -30,6 +31,17 @@
 #define LOG_COLOR3(fore,back,style) alib5::lot::color(alib5::lot::Color::fore,alib5::lot::Color::back,alib5::lot::Style::style)
 #define LOG_COLOR2(fore,back) alib5::lot::color(alib5::lot::Color::fore,alib5::lot::Color::back)
 #define LOG_COLOR1(fore) alib5::lot::color(alib5::lot::Color::fore)
+
+#ifdef _WIN32
+    #include <io.h>
+    #include <windows.h>
+    #define ISATTY _isatty
+    #define FILENO _fileno
+#else
+    #include <unistd.h>
+    #define ISATTY isatty
+    #define FILENO fileno
+#endif
 
 namespace alib5{
     namespace lot{
@@ -97,6 +109,9 @@ namespace alib5{
             /// @brief 输出对象
             FILE * out {stdout};
 
+            /// 是否支持颜色
+            bool support_colors;
+
             /// @brief 类别id
             short category_id;
 
@@ -105,6 +120,7 @@ namespace alib5{
                 if(c.output_target){
                     out = c.output_target;
                 }
+                support_colors = ISATTY(FILENO(out));
             }
             
             void write(LogMsg & msg) override;
@@ -270,8 +286,88 @@ namespace alib5{
             }
 
         };
-    };
-};
+    
+        /// 类似Console处理的String
+        template<IsStringLike T>
+        struct ConsoleBuffer : LogTarget {
+            /// 局部锁，防止输出错乱
+            std::mutex buffer_lock;
+            /// @brief 控制台配置
+            ConsoleConfig cfg;
+            /// @brief 类别id
+            short category_id;
+            /// @brief 数据
+            std::promise<T> * data;
+
+            inline ConsoleBuffer(std::promise<T> & d,short category_id = 0,ConsoleConfig c = ConsoleConfig())
+            :cfg(c){
+                this->category_id = category_id;
+                data = &d;
+            }
+
+            inline void set(std::promise<T> & d){
+                std::lock_guard<std::mutex> lk(buffer_lock);
+                data = &d;
+            }
+
+            inline void detach(){
+                std::lock_guard<std::mutex> lk(buffer_lock);
+                data = nullptr;
+            }
+            
+            void write(LogMsg & msg) override;
+
+            inline void flush() override {
+                /// 由于每次write都会自动flush,因此似乎也没太必要
+            }
+        };
+
+        /// 类似Console处理的String
+        template<IsStringLike T>
+        struct SyncConsoleBuffer : LogTarget {
+            /// 局部锁，防止输出错乱
+            std::mutex buffer_lock;
+            /// @brief 控制台配置
+            ConsoleConfig cfg;
+            /// @brief 类别id
+            short category_id;
+            /// @brief 数据
+            T data;
+            /// 版本号
+            uint64_t version_code;
+            /// 条件变量
+            std::condition_variable cv;
+
+            inline SyncConsoleBuffer(T&& d = T(),short category_id = 0,ConsoleConfig c = ConsoleConfig())
+            :cfg(c)
+            ,data(std::forward<T>(d)){
+                this->category_id = category_id;
+                version_code = 0;
+            }
+            
+            bool updated(uint64_t old_version){
+                return version_code != old_version;
+            }
+
+            uint64_t version(){
+                return version_code;
+            }
+
+            void write(LogMsg & msg) override;
+
+            void wait_update(uint64_t old_version) {
+                std::unique_lock<std::mutex> lk(buffer_lock);
+                cv.wait(lk, [this, old_version] { 
+                    return version_code != old_version; // 防止虚假唤醒
+                });
+            }
+
+            inline void flush() override {
+                /// 由于每次write都会自动flush,因此似乎也没太必要
+            }
+        };
+    }
+}
 
 //// inline实现 ////
 namespace alib5::lot{
@@ -294,11 +390,7 @@ namespace alib5::lot{
         }
     }
 
-    inline void Console::write(LogMsg & msg){
-        static thread_local std::string s_buffer;
-        s_buffer.clear();
-        if(s_buffer.capacity() < 1024) s_buffer.reserve(1024);
-        
+    inline static void color_out(std::string & s_buffer,short category_id,ConsoleConfig& cfg,LogMsg & msg){
         auto append_ansi_payload = [](std::string& buf, uint64_t payload){
             if(payload == 0){
                 buf.append("\e[0m");
@@ -392,7 +484,7 @@ namespace alib5::lot{
         if (cfg.body_color_schema) s_buffer.append(cfg.body_color_schema(msg));
         for(uint32_t i = 0; i < msg.tags.size(); ++i){
             auto& tag = msg.tags[i];
-            if (tag.category == this->category_id) {
+            if (tag.category == category_id) {
                 uint64_t current_pos = tag.get();
                 if(current_pos > last_pos && current_pos <= body_view.size()) {
                     s_buffer.append(body_view.substr(last_pos, current_pos - last_pos));
@@ -406,10 +498,60 @@ namespace alib5::lot{
         if(last_pos < body_view.size()){
             s_buffer.append(body_view.substr(last_pos));
         }
-        s_buffer.append("\e[0m\n");
+        // 后面需要自己换行来着哦哦
+        s_buffer.append("\e[0m");
+        s_buffer.append(msg.cfg.separator);
+    }
+
+    inline void Console::write(LogMsg & msg){
+        if(support_colors){
+            static thread_local std::string s_buffer;
+            s_buffer.clear();
+            if(s_buffer.capacity() < 1024) s_buffer.reserve(1024);
+            
+            color_out(s_buffer, category_id, cfg, msg);
+            
+            {
+                std::lock_guard<std::mutex> lock(console_lock);
+                __internal_alib_fw(s_buffer.data(), 1, s_buffer.size(), out);
+            }
+        }else{
+            /// 虽然后续存在缓存,但是第一次还是要耗时间的
+            auto data = msg.gen_composed();
+            {
+                std::lock_guard<std::mutex> lock(console_lock);
+                __internal_alib_fw(data.data(), 1, data.size(), out);
+            }
+        }
+    }
+
+    template<IsStringLike T> inline void ConsoleBuffer<T>::write(LogMsg & msg){
+        if(!data)return;
+        static thread_local std::string s_buffer;
+        s_buffer.clear();
+        if(s_buffer.capacity() < 1024) s_buffer.reserve(1024);      
+        color_out(s_buffer, category_id, cfg, msg);
+        
         {
-            std::lock_guard<std::mutex> lock(console_lock);
-            __internal_alib_fw(s_buffer.data(), 1, s_buffer.size(), stdout);
+            std::lock_guard<std::mutex> lk(buffer_lock);
+            if(data){
+                data->set_value(s_buffer);
+                data = nullptr;
+            }
+        }
+    }
+
+    template<IsStringLike T> inline void SyncConsoleBuffer<T>::write(LogMsg & msg){
+        static thread_local std::string s_buffer;
+        s_buffer.clear();
+        if(s_buffer.capacity() < 1024) s_buffer.reserve(1024);      
+        color_out(s_buffer, category_id, cfg, msg);
+        
+        {
+            std::lock_guard<std::mutex> lk(buffer_lock);
+            data.assign(s_buffer.begin(),s_buffer.end());
+            ++version_code;
+            cv.notify_all();
         }
     }
 }

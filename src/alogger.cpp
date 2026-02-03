@@ -6,6 +6,21 @@ thread_local std::string LogMsg::sdate;
 thread_local std::string LogMsg::scomposed;
 std::mutex lot::Console::console_lock;
 
+Logger& alib5::__get_internal_logger(){
+    static Logger logger (
+        []{
+            LoggerConfig cfg;
+            cfg.consumer_count = 0;
+            return cfg;
+        }()
+    );
+    static bool init_once = []{
+        logger.append_mod<lot::Console>("console");
+        return true;
+    }();
+    return logger;
+}
+
 void Logger::setup_consumer_threads(){
     // 创建runner
     for(size_t i = 0;i < config.consumer_count;++i){

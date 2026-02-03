@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 流式输出处控制，主持write_to_log(类函数&全局函数)编译期注入
  * @version 0.1
- * @date 2026/01/30
+ * @date 2026/02/03
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -158,6 +158,26 @@ namespace alib5{
             return std::move(*this);
         }
 
+        /// @brief 直接返回自己
+        inline StreamedContext&& operator<<(log_nop fn) && {
+            return std::move(*this);
+        }
+
+        /// @brief 移除字符,同时处理溢出的tag
+        inline StreamedContext&& operator<<(log_erase fn) && {
+            if(fn.count >= cache_str.size()){
+                tags.clear();
+                cache_str.clear();
+            }else{
+                // 因为tag.pos具有线性递增的特性
+                cache_str.resize(cache_str.size() - fn.count);
+                while(!tags.empty() && tags.back().get() > cache_str.size()){
+                    tags.pop_back();
+                }
+            }
+            return std::move(*this);
+        }
+
         /// @brief 支持endlog终止日志
         inline bool operator<<(EndLogFn fn) && {
             return std::move(*this).upload();
@@ -170,6 +190,7 @@ namespace alib5{
 
         // 孩子们，你觉得下面的terminate method还是人类吗？
 
+        /// 这里支持的是fls
         /// @brief YetAnotherTerminateMethod
         inline bool operator<<(LogEnd) && {
             return std::move(*this).upload();

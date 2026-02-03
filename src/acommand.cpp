@@ -12,7 +12,8 @@ std::string_view Command::CommandInput::validate(const std::unordered_set<std::s
     return "";
 }
 
-pvalue_t Command::CommandInput::get(std::string_view d) const noexcept{
+pvalue_t Command::CommandInput::get(std::string_view d,int depth) const noexcept{
+    if(depth < 0)depth = this->depth;
     if(depth >= prefixes.size())return false;
     auto it = prefixes[depth].find(d);
     if(it != prefixes[depth].end())return it->second;
@@ -31,7 +32,7 @@ std::pmr::vector<Command::CommandOutput> Command::__dispatch(bool rm){
     std::pmr::vector<CommandOutput> cs ( ALIB5_DEFAULT_MEMORY_RESOURCE );
 
     Router::DispatchResult result = router.match<
-        true,false
+        {.analyser = false}
     >(parser,
     [&](pcursor_t * p){
         return judge_fn(p,find_opts.emplace_back(
@@ -53,9 +54,9 @@ std::pmr::vector<Command::CommandOutput> Command::__dispatch(bool rm){
         else last_pfx = &find_prefixes.emplace_back(
             std::move(std::pmr::unordered_map<std::string_view,pvalue_t>(ALIB5_DEFAULT_MEMORY_RESOURCE))
         );
-
+        
         for(auto & v : registered_prefixes){
-            auto vec = ana->extract_options(v,"=",0);
+            auto vec = ana->extract_options(v,"=");
             if(vec.size()){
                 // 取最后一个
                 last_pfx->emplace(
@@ -68,7 +69,7 @@ std::pmr::vector<Command::CommandOutput> Command::__dispatch(bool rm){
 
         for(auto &v : registered_options){
             // 可能是option
-            auto has = ana->extract_flag(v,0);
+            auto has = ana->extract_flag(v);
             if(has){
                 // 取最后一个
                 last_opts->emplace(
@@ -101,6 +102,7 @@ std::pmr::vector<Command::CommandOutput> Command::__dispatch(bool rm){
                     defaults,
                     result.keys,
                     result.remains,
+                    result.routes,
                     *this
                 }
             );
@@ -116,16 +118,14 @@ std::pmr::vector<Command::CommandOutput> Command::__dispatch(bool rm){
 
 panalyser_t Command::judge_fn(pcursor_t * cursor,std::pmr::unordered_set<std::string_view> & o,std::pmr::unordered_map<std::string_view,pvalue_t> & p){
     pvalue_t nval = "";
-    std::pmr::string td(ALIB5_DEFAULT_MEMORY_RESOURCE);
     while(*cursor && (nval = cursor->peek())){
-        td = nval.data;
         /// 标记一下bool就行
         /// 这个流程意味着如果你想要prefix有默认值
         /// 可以往opt和prefix中塞入同样的字符串
         bool fnd = false;
         for(auto & v : registered_prefixes){
-            if(td.starts_with(v)){
-                if(td.size() > v.size()  && td[v.size()] != '='){
+            if(nval.data.starts_with(v)){
+                if(nval.data.size() > v.size()  && nval.data[v.size()] != '='){
                     continue;
                 }
                 cursor->next();
@@ -139,7 +139,7 @@ panalyser_t Command::judge_fn(pcursor_t * cursor,std::pmr::unordered_set<std::st
         }
         if(fnd)continue;
 
-        auto it1 = registered_options.find(td);
+        auto it1 = registered_options.find(nval.data);
         if(it1 != registered_options.end()){
             o.emplace(*it1);
             cursor->next();

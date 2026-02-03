@@ -1,7 +1,7 @@
 /**@file autil.h
 * @brief 工具库，提供实用函数
 * @author aaaa0ggmc
-* @date 2026/02/01
+* @date 2026/02/03
 * @version 5.0
 * @copyright Copyright(c) 2026
 */
@@ -79,7 +79,35 @@ namespace alib5{
             
             /// 你只需要传递int64_t id通过implicit constructor生成对象
             ErrorCtx(int64_t iid,std::source_location isl = std::source_location::current()):id(iid),loc(isl){}
-        };     
+        };
+        
+        /// 透明哈希处理,不然每次都需要构建临时pmr
+        struct TransparentStringHash {
+            // 激活异构查找的关键
+            using is_transparent = void;
+
+            // 使用 std::hash<std::string_view> 作为基础，因为它能处理各种字符串容器
+            size_t operator()(std::string_view sv) const noexcept {
+                return std::hash<std::string_view>{}(sv);
+            }
+
+            size_t operator()(const std::pmr::string& s) const noexcept {
+                return std::hash<std::string_view>{}(s);
+            }
+            
+            size_t operator()(const std::string& s) const noexcept {
+                return std::hash<std::string_view>{}(s);
+            }
+        };
+
+        struct TransparentStringEqual {
+            using is_transparent = void;
+
+            // 利用 string_view 的 operator==，它已经重载了各种字符串组合
+            bool operator()(std::string_view lhs, std::string_view rhs) const noexcept {
+                return lhs == rhs;
+            }
+        };
     }
 
     namespace ext{

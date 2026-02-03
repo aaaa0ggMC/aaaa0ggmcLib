@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 一些基本的操作符
  * @version 0.1
- * @date 2026/01/29
+ * @date 2026/02/03
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -121,6 +121,16 @@ namespace alib5{
         inline void manipulate(LogMsgConfig & cfg) const{
             cfg.gen_thread_id = val;
         }
+    };
+    
+    /// @brief 直接忽略这条内容,用于编译期省略不错
+    struct log_nop{};
+
+    /// @brief 移除多少字符
+    struct log_erase{
+        size_t count;
+        
+        log_erase(size_t c):count(c){}
     };
 
     /// @brief 自定义的推送给target的manipulate
