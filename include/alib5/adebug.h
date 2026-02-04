@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 目标是提供简单可用的错误判断，适合我这种一般不调试的人
  * @version 5.0
- * @date 2026/01/29
+ * @date 2026/02/04
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -119,7 +119,7 @@ namespace alib5{
 #ifndef ADEBUG_DISABLE_TOOLKIT_MACROS
 #define panic(ARG) alib5::Panic(ARG,std::source_location::current())
 #define panicf(STR,...) alib5::Panicf(STR,std::source_location::current(),##__VA_ARGS__)
-#define vpaincf(STR,...) alib5::VPanicf(STR,std::source_location::current(),##__VA_ARGS__)
+#define vpanicf(STR,...) alib5::VPanicf(STR,std::source_location::current(),##__VA_ARGS__)
 
 #ifndef ADEBUG_DISABLE_PASS_CONDITION_STRING
 #define vpanicf_if(COND,STR,...) do {if(COND){vpanicf(STR,__VA_ARGS__,#COND);}} while(0)

@@ -14,9 +14,10 @@ set(CMAKE_EXE_LINKER_FLAGS
 include_directories(./include)
 
 aux_source_directory("./src" SRC)
+aux_source_directory("./src/data" DATA)
 
 # 动态版本
-add_library(aaaa0ggmcLib SHARED ${SRC})
+add_library(aaaa0ggmcLib SHARED ${SRC} ${DATA})
 set_target_properties(aaaa0ggmcLib PROPERTIES LINKER_LANGUAGE CXX)
 target_link_options(aaaa0ggmcLib PRIVATE -fPIC)
 target_link_libraries(aaaa0ggmcLib PUBLIC stdc++exp)
@@ -24,7 +25,7 @@ target_link_libraries(aaaa0ggmcLib PUBLIC stdc++exp)
 target_compile_definitions(aaaa0ggmcLib PUBLIC BUILD_DLL)
 
 # 静态版本
-add_library(aaaa0ggmcLib_static STATIC ${SRC})
+add_library(aaaa0ggmcLib_static STATIC ${SRC} ${DATA})
 set_target_properties(aaaa0ggmcLib_static PROPERTIES LINKER_LANGUAGE CXX)
 target_link_options(aaaa0ggmcLib_static PRIVATE -fPIC)
 target_link_libraries(aaaa0ggmcLib_static PUBLIC stdc++exp)

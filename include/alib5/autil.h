@@ -1,7 +1,7 @@
 /**@file autil.h
 * @brief 工具库，提供实用函数
 * @author aaaa0ggmc
-* @date 2026/02/03
+* @date 2026/02/04
 * @version 5.0
 * @copyright Copyright(c) 2026
 */
@@ -30,6 +30,7 @@
 #include <type_traits>
 #include <utility>
 #include <cstdio>
+#include <unordered_set>
 
 /// 虽然其实这个没啥用，但是这个还是指定了默认情况下alib5使用的内存资源
 #define ALIB5_DEFAULT_MEMORY_RESOURCE std::pmr::get_default_resource()
@@ -90,14 +91,15 @@ namespace alib5{
             size_t operator()(std::string_view sv) const noexcept {
                 return std::hash<std::string_view>{}(sv);
             }
-
-            size_t operator()(const std::pmr::string& s) const noexcept {
-                return std::hash<std::string_view>{}(s);
+            /*
+                size_t operator()(const std::pmr::string& s) const noexcept {
+                    return std::hash<std::string_view>{}(s);
+                }
+                
+                size_t operator()(const std::string& s) const noexcept {
+                    return std::hash<std::string_view>{}(s);
             }
-            
-            size_t operator()(const std::string& s) const noexcept {
-                return std::hash<std::string_view>{}(s);
-            }
+            */
         };
 
         struct TransparentStringEqual {
@@ -225,6 +227,30 @@ namespace alib5{
                 return std::tolower(ch);
             });
         }
+
+        /// 简易的字符串常量池
+        template<IsStringLike T>
+        struct StringPool{
+            std::pmr::unordered_set<
+                T,
+                detail::TransparentStringHash,
+                detail::TransparentStringEqual
+            > pool;
+
+            StringPool(std::pmr::memory_resource * __a = ALIB5_DEFAULT_MEMORY_RESOURCE)
+            :pool(__a){}
+
+            inline std::string_view get(std::string_view input) requires
+            requires(std::string_view str){
+                T(str.begin(),str.end());
+            }{
+                auto it = pool.find(input);
+                if(it != pool.end()){
+                    return *it;
+                }
+                return *pool.emplace(T(input.begin(),input.end())).first;
+            }
+        }; 
     };
 
     /// 文件io函数
@@ -545,8 +571,13 @@ namespace alib5{
             }
         };
     
-        if constexpr(std::is_arithmetic_v<T>){
-            T val;
+        if constexpr(std::is_same_v<T,bool>){
+            // 适配一些形式,之所以不用转大小写是因为你不觉得 tRUe很诡异吗
+            if(v == "true" || v == "1" || v == "TRUE" || v == "True")return true;
+            if(v == "false" || v == "0" || v == "FALSE" || v == "False")return false;
+            return false;
+        }else if constexpr(std::is_arithmetic_v<T>){
+            T val = T();
             auto result = std::from_chars(v.data(),v.data() + v.size(),val);
             if(iresult) *iresult = result;
             else report(std::make_error_code(result.ec));
