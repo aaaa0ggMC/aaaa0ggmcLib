@@ -1,7 +1,7 @@
 /**@file autil.h
 * @brief 工具库，提供实用函数
 * @author aaaa0ggmc
-* @date 2026/02/04
+* @date 2026/02/05
 * @version 5.0
 * @copyright Copyright(c) 2026
 */
@@ -207,7 +207,7 @@ namespace alib5{
         /// 更加高级的去除转义语序
         std::string_view ALIB5_API unescape(std::string_view in) noexcept;
         /// 反向处理，对字符串进行转义化
-        std::string_view ALIB5_API escape(std::string_view in) noexcept;
+        std::string_view ALIB5_API escape(std::string_view in,bool ensure_ascii = false) noexcept;
         /// 去除空白字符，返回的是input的sub string_view
         std::string_view ALIB5_API trim(std::string_view input);
         // 分割字符串，可以识别整个字符串,vector中为对source的切片
@@ -278,6 +278,7 @@ namespace alib5{
                 type = entry.type;
                 subs = std::move(entry.subs);
                 scanned = entry.scanned;
+                last_write = entry.last_write;
             }
             /// 复制函数
             inline void operator=(const FileEntry & entry){
@@ -285,6 +286,7 @@ namespace alib5{
                 type = entry.type;
                 subs = entry.subs;
                 scanned = entry.scanned;
+                last_write = entry.last_write;
             }
             inline FileEntry(FileEntry&& entry) noexcept{
                 operator=(std::forward<FileEntry>(entry));
@@ -344,6 +346,8 @@ namespace alib5{
             std::pmr::string path {ALIB5_DEFAULT_MEMORY_RESOURCE};
             /// 类型
             Type type {not_found};
+            /// 上次更新时间
+            std::filesystem::file_time_type last_write {};
         private:
             /// 缓存的子对象
             mutable std::pmr::unordered_map<std::pmr::string,FileEntry> subs {ALIB5_DEFAULT_MEMORY_RESOURCE};
@@ -357,9 +361,20 @@ namespace alib5{
 
             /// 搜索子目录
             void scan_subs() const;
+
+            /// 查看是否更新
+            bool updated() {
+                if(invalid())return false;
+                auto t = std::filesystem::last_write_time(path);
+                if(last_write != t){
+                    last_write = t;
+                    return true;
+                }
+                return false;
+            }
         };
 
-        FileEntry ALIB5_API load_entry(std::string_view) noexcept;
+        FileEntry ALIB5_API load_entry(std::string_view,bool check_existence = true) noexcept;
 
         /// 遍历目录的结果
         struct ALIB5_API TraverseData{
@@ -447,25 +462,27 @@ namespace alib5{
         GlobalMemUsage ALIB5_API get_global_mem_usage() noexcept;
     }
 };
-
+#include <iostream>
 // 这里是统一的inline实现
 namespace alib5{
     /// 写入文件
     template<CanExtendString T> size_t write_all(std::string_view path,T & output){
+        if(path.empty())return std::variant_npos;
+        std::cout << "Writing into" << path << std::endl;
         // 这里主要是惧怕path是从一段字符串截取下来的，不构建string会导致输出错误
         FILE * f = std::fopen(std::string(path).c_str(),"wb");
         if(!f){
             invoke_error(err_io_error,"Failed to open file {}!",path);
             return std::variant_npos;
         }
-        auto sz = std::fwrite(output.data(),sizeof(T::value_type),output.size(),f);
+        auto sz = std::fwrite(output.data(),sizeof(typename T::value_type),output.size(),f);
         std::fclose(f);
         return sz;
     }
 
     /// 写入文件
     template<CanExtendString T> size_t io::FileEntry::write_all(T & input) const{
-        return write_all(path,input);
+        return alib5::write_all(path,input);
     }
 
     /// 内置读取文件
@@ -484,7 +501,7 @@ namespace alib5{
 
         size_t old_size = output.size();
         output.resize(old_size + read_count);
-        std::fread(output.data() + old_size,sizeof(char),read_count,f);
+        read_count = std::fread(output.data() + old_size,sizeof(char),read_count,f);
         std::fclose(f);
         return read_count;
     }

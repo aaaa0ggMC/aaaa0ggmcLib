@@ -1,6 +1,7 @@
 #include <alib5/adata.h>
 #include <rapidjson/rapidjson.h>
 #include <rapidjson/reader.h>
+#include <cmath>
 
 using namespace alib5;
 using namespace alib5::data;
@@ -77,16 +78,22 @@ struct ADataHandler{
 bool JSON::parse(std::string_view v,dadata_t & root){
     root.set<std::monostate>();
     using namespace rapidjson;
-    Reader reader;
+
+    char localBuffer[16 * 1024];
+    MemoryPoolAllocator<> stackAlloc(localBuffer, sizeof(localBuffer));
+
+    GenericReader<UTF8<>,UTF8<>,MemoryPoolAllocator<>> reader(&stackAlloc);
     MemoryStream ss(v.data(), v.size());
     ADataHandler handler(root);
 
-    ParseResult res = reader.Parse(ss, handler);
-    
+    ParseResult res;
+    if(cfg.rapidjson_recursive) reader.Parse<kParseDefaultFlags>(ss, handler);
+    else reader.Parse<kParseIterativeFlag>(ss, handler);
+
     return (bool)res;
 }
 
-bool JSON::__internal_dump(__dump_fn fn,void * p,dadata_t & root){
+JSON::DumpResult JSON::__internal_dump(__dump_fn fn,void * p,dadata_t & root){
     struct Frame{
         dadata_t* data;
         int depth;
@@ -104,6 +111,7 @@ bool JSON::__internal_dump(__dump_fn fn,void * p,dadata_t & root){
     std::vector<Frame> queue;
     /// SSO
     std::string indents = "";
+    DumpResult rt = Success;
 
     std::string_view place_comma = cfg.compact_lines ? "," : ",\n";
     std::string_view place_next = cfg.compact_lines ? (cfg.compact_spaces?"":" ") : "\n";
@@ -185,10 +193,28 @@ bool JSON::__internal_dump(__dump_fn fn,void * p,dadata_t & root){
         }else if(current.data->is_value()){
             auto & v = current.data->value();
             if(v.get_type() != v.STRING){
-                fn(v.to<std::string>(),p);
+                if(cfg.warn_when_nan && v.get_type() == v.FLOATING){
+                    double val = v.to<float>();
+                    if(std::isnan(val)){
+                        invoke_error(err_dump_error,"Encountered nan when dumping!");
+                        if(!rt)rt = EncounteredNAN;
+                    }else{
+                        invoke_error(err_dump_error,"Encountered inf when dumping!");
+                        if(!rt)rt = EncounteredINF;
+                    }
+                    if(cfg.float_precision >= 0){
+                        static thread_local std::pmr::string double_cache (ALIB5_DEFAULT_MEMORY_RESOURCE);
+                        if(double_cache.capacity() < 16)double_cache.reserve(16);
+                        double_cache.clear();
+
+                        std::format_to(std::back_inserter(double_cache),std::runtime_format("{:.{}f}"),val,cfg.float_precision);
+                        fn(double_cache,p);
+                    }
+                }
+                if(cfg.float_precision < 0)fn(v.to<std::string>(),p);
             }else{
                 fn("\"",p);
-                fn(str::escape(v.to<std::string>()),p);
+                fn(str::escape(v.to<std::string>(),cfg.ensure_ascii),p);
                 fn("\"",p);
             }
             place(current);
@@ -231,7 +257,7 @@ bool JSON::__internal_dump(__dump_fn fn,void * p,dadata_t & root){
                 frames.clear();
                 for(auto proxy : current.data->object()){
                     /// 过滤节点
-                    if(cfg.filter && !cfg.filter(proxy.first,proxy.second))
+                    if(cfg.filter && cfg.filter(proxy.first,proxy.second) == JSONConfig::FilterOp::Discard)
                         continue;
                     frames.emplace_back(ObjFrame{
                         proxy.first,
@@ -258,7 +284,7 @@ bool JSON::__internal_dump(__dump_fn fn,void * p,dadata_t & root){
                 for(auto proxy : current.data->object()){
                     /// 过滤节点,这个地方是一定会变化的,因此不用管
                     /// 所以它并不是最后一个
-                    if(cfg.filter && !cfg.filter(proxy.first,proxy.second)){
+                    if(cfg.filter && cfg.filter(proxy.first,proxy.second) == JSONConfig::FilterOp::Discard){
                         continue;
                     }
                     queue.push_back({
@@ -273,5 +299,5 @@ bool JSON::__internal_dump(__dump_fn fn,void * p,dadata_t & root){
             }
         }
     }
-    return true;
+    return rt;
 }

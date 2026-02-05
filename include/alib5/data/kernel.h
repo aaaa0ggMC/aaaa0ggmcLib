@@ -328,10 +328,22 @@ namespace alib5{
             allocator = __a;
             set<T>();
         }
-        template<class T> AData(T && val,std::pmr::memory_resource * __a = ALIB5_DEFAULT_MEMORY_RESOURCE){
+        template<class T> 
+        requires (!std::is_same_v<std::remove_cvref_t<T>, AData>)
+        AData(T && val,std::pmr::memory_resource * __a = ALIB5_DEFAULT_MEMORY_RESOURCE){
             allocator = __a;
             this->operator=(std::forward<T>(val));   
         }
+        AData(const AData& other) : allocator(other.allocator){
+            *this = other;
+        }
+        AData(AData&& other) noexcept : allocator(other.allocator){
+            *this = std::move(other);
+        }
+        AData(const AData& other, std::pmr::memory_resource* __a):allocator(__a){
+            *this = other;
+        }
+        ~AData() = default;
 
         /// 类型判断
         inline Type get_type() const{ return (Type)data.index(); }
@@ -362,6 +374,7 @@ namespace alib5{
             return *this;
         }
 
+        /// 对于move对象自动重置为NULL
         AData& rewrite(AData&& other) {
             if(this == &other)return *this;
             if(this->allocator == other.allocator){
@@ -370,6 +383,14 @@ namespace alib5{
                 this->set<std::monostate>();
                 this->operator=(other);
             }
+            other.set<std::monostate>();
+            return *this;
+        }
+
+        /// 对于右值,std::move强调了数据的转移,因此进行覆盖
+        /// move对象类型重置为NULL
+        AData& operator=(AData && val){
+            rewrite(std::move(val));    
             return *this;
         }
 
@@ -456,7 +477,8 @@ namespace alib5{
         }       
         /// 写入文件
         template<IsDataPolicy<AData> Dumper> auto dump_to_file(std::string_view file_path,Dumper && dumper = Dumper(),std::pmr::memory_resource * res = ALIB5_DEFAULT_MEMORY_RESOURCE){
-            return dump_to_entry(io::load_entry(file_path),std::forward<Dumper>(dumper),res);
+            /// 不在意文件是否存在
+            return dump_to_entry(io::load_entry(file_path,false),std::forward<Dumper>(dumper),res);
         }
     };
 

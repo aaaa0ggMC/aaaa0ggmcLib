@@ -113,18 +113,21 @@ void io::TraverseConfig::build() noexcept{
     }
 }
 
-io::FileEntry io::load_entry(std::string_view path) noexcept {
+io::FileEntry io::load_entry(std::string_view path,bool check_existence) noexcept {
     io::FileEntry entry;
     std::error_code ec;
     auto s = std::filesystem::status(path, ec);
 
-    if(ec){
+    if(check_existence && ec){
         auto value = ec.value();
         auto msg = ec.message();
         invoke_error(err_filesystem_error,"{}|{}",value,msg);
 
         entry.type = io::FileEntry::not_found;
         return entry;
+    }else{
+        // 有效
+        entry.last_write = std::filesystem::last_write_time(path);
     }
 
     entry.path = path;
@@ -251,6 +254,7 @@ io::TraverseData io::traverse_files(std::string_view file_path,TraverseConfig cf
                     FileEntry entry;
                     entry.type = (FileEntry::Type)sub.status().type();
                     entry.path = sub.path().string();
+                    entry.last_write = sub.last_write_time();
                     
                     if(entry.path.empty()){
                         continue;
@@ -413,7 +417,7 @@ std::string_view str::unescape(std::string_view in) noexcept {
 
     for (size_t i = 0; i < in.size(); ++i){
         if(in[i] == '\\' && i + 1 < in.size()){
-            i++; // 跳过反斜杠
+            i++; 
             switch(in[i]){
                 case 'a':  buffer += '\a'; break;
                 case 'b':  buffer += '\b'; break;
@@ -426,10 +430,9 @@ std::string_view str::unescape(std::string_view in) noexcept {
                 case '\\': buffer += '\\'; break;
                 case '\'': buffer += '\''; break;
                 case '\"': buffer += '\"'; break;
-                case 'x': { // 十六进制 \xHH
+                case 'x': {
                     if(i + 1 < in.size() && isxdigit(in[i+1])){
                         int val = 0;
-                        // 尝试读最多2位
                         for(int k = 0; k < 2 && i + 1 < in.size() && isxdigit(in[i+1]); ++k){
                             char c = in[++i];
                             val = val * 16 + (isdigit(c) ? c - '0' : tolower(c) - 'a' + 10);
@@ -438,17 +441,54 @@ std::string_view str::unescape(std::string_view in) noexcept {
                     }
                     break;
                 }
+                case 'u': 
+                case 'U': {
+                    int len = (in[i] == 'U') ? 8 : 4;
+                    if(i + len < in.size()){
+                        uint32_t val = 0;
+                        bool valid = true;
+                        for(int k = 1; k <= len; ++k){
+                            if(isxdigit(in[i+k])){
+                                char c = in[i+k];
+                                val = val * 16 + (isdigit(c) ? c - '0' : tolower(c) - 'a' + 10);
+                            }else{
+                                valid = false;
+                                break;
+                            }
+                        }
+                        if(valid){
+                            i += len;
+                            if(val <= 0x7F){
+                                buffer += static_cast<char>(val);
+                            }else if(val <= 0x7FF){
+                                buffer += static_cast<char>(0xC0 | ((val >> 6) & 0x1F));
+                                buffer += static_cast<char>(0x80 | (val & 0x3F));
+                            }else if(val <= 0xFFFF){
+                                buffer += static_cast<char>(0xE0 | ((val >> 12) & 0x0F));
+                                buffer += static_cast<char>(0x80 | ((val >> 6) & 0x3F));
+                                buffer += static_cast<char>(0x80 | (val & 0x3F));
+                            }else if(val <= 0x10FFFF){
+                                buffer += static_cast<char>(0xF0 | ((val >> 18) & 0x07));
+                                buffer += static_cast<char>(0x80 | ((val >> 12) & 0x3F));
+                                buffer += static_cast<char>(0x80 | ((val >> 6) & 0x3F));
+                                buffer += static_cast<char>(0x80 | (val & 0x3F));
+                            }
+                            break;
+                        }
+                    }
+                    buffer += in[i];
+                    break;
+                }
                 default: {
-                    if(in[i] >= '0' && in[i] <= '7'){ // 八进制 \NNN
+                    if(in[i] >= '0' && in[i] <= '7'){
                         int val = 0;
-                        // 尝试读最多3位
-                        for (int k = 0; k < 3 && i < in.size() && (in[i] >= '0' && in[i] <= '7'); ++k) {
+                        for (int k = 0; k < 3 && i < in.size() && (in[i] >= '0' && in[i] <= '7'); ++k){
                             val = val * 8 + (in[i++] - '0');
                         }
-                        i--; // 循环多加了一次，退回来
+                        i--; 
                         buffer += static_cast<char>(val);
                     }else{
-                        buffer += in[i]; // 其他字符原样输出
+                        buffer += in[i];
                     }
                 }
             }
@@ -459,14 +499,15 @@ std::string_view str::unescape(std::string_view in) noexcept {
     return buffer;
 }
 
-std::string_view str::escape(std::string_view in) noexcept {
-    // 保持血统一致，使用 thread_local 缓存避免频繁分配
+std::string_view str::escape(std::string_view in,bool ensure_ascii) noexcept {
     static thread_local std::pmr::string buffer {ALIB5_DEFAULT_MEMORY_RESOURCE};
     buffer.clear();
 
-    for (size_t i = 0; i < in.size(); ++i) {
+    static const char* hex = "0123456789abcdef";
+
+    for (size_t i = 0; i < in.size(); ++i){
         unsigned char c = in[i];
-        switch (c) {
+        switch(c){
             case '\"': buffer += "\\\""; break;
             case '\\': buffer += "\\\\"; break;
             case '\a': buffer += "\\a";  break;
@@ -477,17 +518,43 @@ std::string_view str::escape(std::string_view in) noexcept {
             case '\t': buffer += "\\t";  break;
             case '\v': buffer += "\\v";  break;
             case '\x1b': buffer += "\\e"; break;
-            default:
-                // 处理不可见字符（非 ASCII 打印字符）
-                if (c < 32 || c > 126) {
+            default: {
+                if(c < 32 || c == 127){ // 控制字符使用 \xHH
                     buffer += "\\x";
-                    static const char* hex = "0123456789abcdef";
                     buffer += hex[(c >> 4) & 0xF];
                     buffer += hex[c & 0xF];
-                } else {
+                }else if(ensure_ascii && c >= 0x80){ // 处理 UTF-8 并转为 \u 或 \U
+                    uint32_t cp = 0;
+                    size_t len = 0;
+                    // 简单的 UTF-8 解码逻辑
+                    if((c & 0xE0) == 0xC0 && i + 1 < in.size()){
+                        cp = (c & 0x1F) << 6 | (in[++i] & 0x3F);
+                        len = 4; // \uXXXX
+                    }else if((c & 0xF0) == 0xE0 && i + 2 < in.size()){
+                        cp = (c & 0x0F) << 12 | ((in[i+1] & 0x3F) << 6) | (in[i+2] & 0x3F);
+                        i += 2; len = 4;
+                    }else if((c & 0xF8) == 0xF0 && i + 3 < in.size()){
+                        cp = (c & 0x07) << 18 | ((in[i+1] & 0x3F) << 12) | ((in[i+2] & 0x3F) << 6) | (in[i+3] & 0x3F);
+                        i += 3; len = 8; // \UXXXXXXXX
+                    }
+
+                    if(len == 4){
+                        buffer += "\\u";
+                        for(int k = 12; k >= 0; k -= 4) buffer += hex[(cp >> k) & 0xF];
+                    }else if(len == 8){
+                        buffer += "\\U";
+                        for(int k = 28; k >= 0; k -= 4) buffer += hex[(cp >> k) & 0xF];
+                    }else{
+                        // 非法 UTF-8 序列，退回到 \x 处理
+                        buffer += "\\x";
+                        buffer += hex[(c >> 4) & 0xF];
+                        buffer += hex[c & 0xF];
+                    }
+                }else{
                     buffer += c;
                 }
                 break;
+            }
         }
     }
     return buffer;
