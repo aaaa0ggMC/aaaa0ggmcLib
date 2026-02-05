@@ -365,7 +365,12 @@ namespace alib5{
             /// 查看是否更新
             bool updated() {
                 if(invalid())return false;
-                auto t = std::filesystem::last_write_time(path);
+                std::error_code ec;
+                auto t = std::filesystem::last_write_time(path,ec);
+                if(ec){
+                    invoke_error(err_filesystem_error,"Failed to check \"{}\" 's last write time!",path);
+                    return true;
+                }
                 if(last_write != t){
                     last_write = t;
                     return true;
@@ -374,7 +379,7 @@ namespace alib5{
             }
         };
 
-        FileEntry ALIB5_API load_entry(std::string_view,bool check_existence = true) noexcept;
+        FileEntry ALIB5_API load_entry(std::string_view,bool force_existence = true) noexcept;
 
         /// 遍历目录的结果
         struct ALIB5_API TraverseData{

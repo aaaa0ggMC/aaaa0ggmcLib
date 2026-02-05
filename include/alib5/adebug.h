@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 目标是提供简单可用的错误判断，适合我这种一般不调试的人
  * @version 5.0
- * @date 2026/02/04
+ * @date 2026/02/05
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -33,6 +33,7 @@ Stack    :
 {5}
 )";
 constexpr const char * alib_g3_internal_panic_if_fmt = "{}\nCondition: {}";
+constexpr const char * alib_g3_internal_vpanic_if_fmt = "\nCondition: {}";
 #endif
 
 #ifndef ADEBUG_INTERNAL_PANIC_STACKTRACE_FN
@@ -122,7 +123,7 @@ namespace alib5{
 #define vpanicf(STR,...) alib5::VPanicf(STR,std::source_location::current(),##__VA_ARGS__)
 
 #ifndef ADEBUG_DISABLE_PASS_CONDITION_STRING
-#define vpanicf_if(COND,STR,...) do {if(COND){vpanicf(STR,__VA_ARGS__,#COND);}} while(0)
+#define vpanicf_if(COND,STR,...) do {if(COND){std::string vfmt = (STR);vfmt += alib_g3_internal_vpanic_if_fmt;vpanicf(vfmt,__VA_ARGS__,#COND);}} while(0)
 #define panic_if(COND,ARG) do {if(COND){panicf(alib_g3_internal_panic_if_fmt,ARG,#COND);}} while(0)
 #define panicf_if(COND,STR,...) do {if(COND){panicf(STR,__VA_ARGS__,#COND);}} while(0)
 #else

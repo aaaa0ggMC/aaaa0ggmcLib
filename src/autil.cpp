@@ -113,30 +113,33 @@ void io::TraverseConfig::build() noexcept{
     }
 }
 
-io::FileEntry io::load_entry(std::string_view path,bool check_existence) noexcept {
+io::FileEntry io::load_entry(std::string_view path,bool force_existence) noexcept {
     io::FileEntry entry;
     std::error_code ec;
     auto s = std::filesystem::status(path, ec);
 
-    if(check_existence && ec){
-        auto value = ec.value();
-        auto msg = ec.message();
-        invoke_error(err_filesystem_error,"{}|{}",value,msg);
-
-        entry.type = io::FileEntry::not_found;
-        return entry;
-    }else{
-        // 有效
-        entry.last_write = std::filesystem::last_write_time(path);
-    }
 
     entry.path = path;
-    char ch = entry.path.empty() ? '\0' : entry.path.back();
-    if(std::filesystem::is_directory(entry.path) && ch != '\\' && ch != '/'){
-        entry.path.push_back(ALIB_PATH_SEP);
-    }
+    if(ec){
+        if(force_existence){
+            auto value = ec.value();
+            auto msg = ec.message();
+            invoke_error(err_filesystem_error,"{}|{}",value,msg);
+        }
 
-    entry.type = static_cast<io::FileEntry::Type>(s.type());
+        entry.type = io::FileEntry::not_found;
+        if(force_existence){
+            return entry;
+        }
+    }else{
+        // 有效
+        char ch = entry.path.empty() ? '\0' : entry.path.back();
+        if(std::filesystem::is_directory(entry.path) && ch != '\\' && ch != '/'){
+            entry.path.push_back(ALIB_PATH_SEP);
+        }
+        entry.last_write = std::filesystem::last_write_time(path,ec);
+        entry.type = static_cast<io::FileEntry::Type>(s.type());
+    }    
     return entry;
 }
 

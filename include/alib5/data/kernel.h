@@ -6,14 +6,22 @@
 #include <alib5/ecs/linear_storage.h>
 
 namespace alib5{
+    /// 数组访问自动扩展
+    static constexpr size_t conf_array_auto_expand = 4;
+
     template<class T> concept IsNodeValue = 
         std::is_integral_v<std::decay_t<T>> || std::is_floating_point_v<std::decay_t<T>> ||
-        std::is_same_v<std::decay_t<T>,bool> || IsStringLike<std::decay_t<T>>;
+        std::is_same_v<std::decay_t<T>,bool> || IsStringLike<std::decay_t<T>> || IsStringLike<T>;
 
     template<class T,class Data> concept IsDataPolicy = requires(T & t,std::pmr::string & dmp,std::string_view data,Data & d){
         t.parse(data,d);
         t.dump(dmp,d); // 至少要求dump到pmr::string
     }; // 不打算阻止这个了 && !std::is_void_v<decltype(std::declval<T>().parse(std::declval<std::string_view>(), std::declval<Data&>()))>;
+
+    /// 默认值
+    namespace data{
+        class JSON;
+    };
 
     /// 数值
     /// @warning 多线程下大概率不能正常工作,因此多线程下必须加锁!!!
@@ -76,6 +84,7 @@ namespace alib5{
         template<class T> requires(!IsStringLike<std::decay_t<T>> && !std::is_same_v<std::decay_t<T>, Value>)
         Value(const T && d,std::pmr::memory_resource * __a = ALIB5_DEFAULT_MEMORY_RESOURCE):data(__a){
             // 无非只是多计算一次
+            type = STRING;
             data_dirt = true;
             transform<std::decay_t<T>>() = std::forward<T>(d);
         }
@@ -310,6 +319,26 @@ namespace alib5{
                 return __get_value<T>();
             }
         }
+
+        static auto clone_data(const decltype(data)& src, std::pmr::memory_resource* res) {
+            return std::visit([res](auto&& v) -> decltype(data) {
+                using T = std::decay_t<decltype(v)>;
+                if constexpr (std::is_same_v<T, std::monostate>) return v;
+                else if constexpr (std::is_same_v<T, Value>){
+                    Value x(res);
+                    x = v;
+                    return x; 
+                }else if constexpr (std::is_same_v<T, Object>){
+                    Object o(res);
+                    o = v;
+                    return o;
+                }else{
+                    Array a(res);
+                    a = v;
+                    return a;
+                }
+            }, src);
+        }
     public:
         inline std::pmr::memory_resource* get_allocator(){ return allocator; }
 
@@ -320,30 +349,33 @@ namespace alib5{
         auto& set_null(){ return set<std::monostate>(); }
 
         /// 基础构造
-        AData(std::pmr::memory_resource * __a = ALIB5_DEFAULT_MEMORY_RESOURCE){
+        explicit AData(std::pmr::memory_resource * __a = ALIB5_DEFAULT_MEMORY_RESOURCE){
             allocator = __a;
             // set<std::monostate>();
         }
-        template<class T> AData(std::pmr::memory_resource * __a = ALIB5_DEFAULT_MEMORY_RESOURCE){
-            allocator = __a;
-            set<T>();
-        }
-        template<class T> 
+        template<IsNodeValue T> 
         requires (!std::is_same_v<std::remove_cvref_t<T>, AData>)
         AData(T && val,std::pmr::memory_resource * __a = ALIB5_DEFAULT_MEMORY_RESOURCE){
             allocator = __a;
             this->operator=(std::forward<T>(val));   
         }
         AData(const AData& other) : allocator(other.allocator){
-            *this = other;
+            data = other.data;
         }
         AData(AData&& other) noexcept : allocator(other.allocator){
             *this = std::move(other);
         }
         AData(const AData& other, std::pmr::memory_resource* __a):allocator(__a){
-            *this = other;
+            data = clone_data(other.data, __a);
         }
         ~AData() = default;
+
+        /// 解决父子之间赋值出现的crash
+        /// 问题已经被处理了,调整了赋值链条,但是api保留一下
+        AData detach() const{
+            // 相当于是复制一份数据
+            return *this;
+        }
 
         /// 类型判断
         inline Type get_type() const{ return (Type)data.index(); }
@@ -376,14 +408,18 @@ namespace alib5{
 
         /// 对于move对象自动重置为NULL
         AData& rewrite(AData&& other) {
+            using safe_t = std::remove_cv_t<decltype(data)>;
             if(this == &other)return *this;
-            if(this->allocator == other.allocator){
-                this->data = std::move(other.data);
-            }else{
-                this->set<std::monostate>();
-                this->operator=(other);
-            }
+            safe_t d = std::move(other.data);
+            // 防止other引用失效
             other.set<std::monostate>();
+
+            if(this->allocator == other.allocator){
+                this->data = std::move(d);
+            }else{
+                // this->set<std::monostate>();
+                this->data = clone_data(d, allocator);
+            }
             return *this;
         }
 
@@ -401,14 +437,14 @@ namespace alib5{
                 panic_if(get_type() != val.get_type(),"Implicit type cast is forbidden.");
                 std::abort();
             }
-            std::visit([this](auto&& val) {
-                using T = std::decay_t<decltype(val)>;
-                if constexpr(std::is_same_v<T, std::monostate>){
-                    this->set<std::monostate>();
-                }else{
-                    this->__ensure_type<T>() = val;
-                }
-            }, val.data);
+            
+            if(val.allocator == this->allocator){
+                /// 复制版本
+                decltype(data) safe_d = val.data;
+                data = std::move(safe_d);
+            }else{
+                this->data = clone_data(val.data, allocator);
+            }
             return *this;
         }
 
@@ -445,38 +481,38 @@ namespace alib5{
 
         //// 主要区域-1 : 读取数据,直接覆盖当前的类型 ////
         /// 从内存中读取
-        template<IsDataPolicy<AData> DataPolicy> auto load_from_memory(std::string_view data,DataPolicy && parser = DataPolicy()){
+        template<IsDataPolicy<AData> DataPolicy = data::JSON> auto load_from_memory(std::string_view data,DataPolicy && parser = DataPolicy()){
             return std::forward<DataPolicy>(parser).parse(data,*this);
         }
         /// 从文件中读取
-        template<IsDataPolicy<AData> DataPolicy> auto load_from_entry(io::FileEntry entry,DataPolicy && parser = DataPolicy()){
+        template<IsDataPolicy<AData> DataPolicy = data::JSON> auto load_from_entry(io::FileEntry entry,DataPolicy && parser = DataPolicy()){
             panic_debug(entry.invalid(),"Entry is invalid!");
             // release模式下invalid read出来是""
             return load_from_memory(entry.read(),std::forward<DataPolicy>(parser));
         }
-        template<IsDataPolicy<AData> DataPolicy> auto load_from_file(std::string_view path,DataPolicy && parser = DataPolicy()){
+        template<IsDataPolicy<AData> DataPolicy = data::JSON> auto load_from_file(std::string_view path,DataPolicy && parser = DataPolicy()){
             return load_from_entry(io::load_entry(path),std::forward<DataPolicy>(parser));
         }
 
         /// 写入对象
-        template<IsDataPolicy<AData> Dumper,class T> auto dump(T & target,Dumper && dumper = Dumper()){
+        template<IsDataPolicy<AData> Dumper = data::JSON,class T> auto dump(T & target,Dumper && dumper = Dumper()){
             return std::forward<Dumper>(dumper).dump(target,*this);
         }
         /// 写入pmr::string
-        template<IsDataPolicy<AData> Dumper> auto dump_to_string(Dumper && dumper = Dumper(),std::pmr::memory_resource * res = ALIB5_DEFAULT_MEMORY_RESOURCE){
+        template<IsDataPolicy<AData> Dumper = data::JSON> auto dump_to_string(Dumper && dumper = Dumper(),std::pmr::memory_resource * res = ALIB5_DEFAULT_MEMORY_RESOURCE){
             std::pmr::string str (res);
             dump(str,std::forward<Dumper>(dumper));
             return str;
         }
         /// 写入entry
-        template<IsDataPolicy<AData> Dumper> auto dump_to_entry(const io::FileEntry& entry,Dumper && dumper = Dumper(),std::pmr::memory_resource * res = ALIB5_DEFAULT_MEMORY_RESOURCE){
+        template<IsDataPolicy<AData> Dumper = data::JSON> auto dump_to_entry(const io::FileEntry& entry,Dumper && dumper = Dumper(),std::pmr::memory_resource * res = ALIB5_DEFAULT_MEMORY_RESOURCE){
             std::pmr::string str (res);
             auto val = dump(str,std::forward<Dumper>(dumper));
             entry.write_all(str);
             return val;
         }       
         /// 写入文件
-        template<IsDataPolicy<AData> Dumper> auto dump_to_file(std::string_view file_path,Dumper && dumper = Dumper(),std::pmr::memory_resource * res = ALIB5_DEFAULT_MEMORY_RESOURCE){
+        template<IsDataPolicy<AData> Dumper = data::JSON> auto dump_to_file(std::string_view file_path,Dumper && dumper = Dumper(),std::pmr::memory_resource * res = ALIB5_DEFAULT_MEMORY_RESOURCE){
             /// 不在意文件是否存在
             return dump_to_entry(io::load_entry(file_path,false),std::forward<Dumper>(dumper),res);
         }
@@ -612,14 +648,15 @@ namespace alib5{
     }
 
     inline AData& AData::Array::operator[](std::ptrdiff_t index){
-        return const_cast<AData&>(
-            (((const AData::Array*)(this))->operator[](index))
-        );
+        if(index < 0)index = values.size() + index;
+        [[unlikely]] panic_if(index < 0 || index >= values.size() + conf_array_auto_expand,"Array out of bounds!");
+        if(index >= values.size())values.resize(index + 1,AData(values.get_allocator().resource()));
+        return values[index];
     }
 
     inline const AData& AData::Array::operator[](std::ptrdiff_t index) const{
         if(index < 0)index = values.size() + index;
-        [[unlikely]] panic_if(index >= values.size(),"Array out of bounds!");
+        [[unlikely]] panic_if(index < 0 || index >= values.size(),"Array out of bounds!");
         return values[index];
     }
 
