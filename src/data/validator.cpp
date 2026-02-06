@@ -564,6 +564,7 @@ std::pmr::string Validator::from_adata(const AData & doc){
             }
             case dtype_t::TObject:
                 // 这里理论上要加入对子类的验证,但是需要等等我
+                current->type_restrict = Node::RObject;
                 for(auto proxy : d->object()){
                     auto next_vi = visit_tree;
                     next_vi += ".";
