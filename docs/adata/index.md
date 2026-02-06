@@ -7,6 +7,8 @@
   - [当前Features与规划](#当前features与规划)
     - [Features](#features)
     - [规划](#规划)
+  - [详解](#详解)
+    - [adata的架构](#adata的架构)
   
 ## 总纲
 AData是一个动态的数据与配置文件解决方案,具备类似动态语言如Python/Javascript等的灵活性与不错的安全性(具体的各种BUG我还没测试出来,需要漫长的维护期)与性能,同时支持数据校验.AData并不绑定一个数据存储形式(JSON,XML,TOML...)而是力图成为一个比较通用的数据解决方案,类似这些数据存储形式的IR.
@@ -98,4 +100,31 @@ AData是一个动态的数据与配置文件解决方案,具备类似动态语�
 - 加入一些有用的validates预制菜
 - 提供对TOML的解析(因为老版本的ADATA就是提供了对JSON&TOML的解析的)
 
+## 详解
+### adata的架构
+```mermaid
+graph LR
+    subgraph Input
+        JSON[JSON Source]
+        TOML[TOML Source]
+        XML[XML Source]
+    end
+
+    subgraph Core
+        AData[("AData (Internal IR)")]
+        Validator{"Validator<br/>(Schema Check)"}
+    end
+
+    subgraph Output
+        CPP[C++ Objects]
+        Dump[Dumped Strings/Files]
+    end
+
+    JSON --> AData
+    TOML --> AData
+    XML --> AData
+    AData --> Validator
+    Validator -- Pass --> CPP
+    Validator -- Pass --> Dump
+```
 
