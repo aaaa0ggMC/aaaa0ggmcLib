@@ -87,9 +87,13 @@ bool JSON::parse(std::string_view v,dadata_t & root){
     ADataHandler handler(root);
 
     ParseResult res;
-    if(cfg.rapidjson_recursive) reader.Parse<kParseDefaultFlags>(ss, handler);
-    else reader.Parse<kParseIterativeFlag>(ss, handler);
-
+    if(cfg.rapidjson_recursive){
+        if(cfg.allow_comments)reader.Parse<kParseDefaultFlags | rapidjson::kParseCommentsFlag>(ss, handler);
+        else reader.Parse<kParseDefaultFlags>(ss, handler);
+    }else{
+        if(cfg.allow_comments)reader.Parse<kParseIterativeFlag | rapidjson::kParseCommentsFlag>(ss, handler);
+        else reader.Parse<kParseIterativeFlag >(ss, handler);
+    }
     return (bool)res;
 }
 

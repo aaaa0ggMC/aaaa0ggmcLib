@@ -36,6 +36,8 @@ namespace alib5::data{
         /// 默认使用rapidjson默认parse方式--递归处理
         /// 改为false使用模拟栈
         bool rapidjson_recursive { true };
+        /// 解析时支持注释
+        bool allow_comments { false };
     };
 
     // 由于使用rapidjson的SAX模式,因此似乎也不需要使用pImpl技术缓存上下文
