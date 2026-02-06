@@ -17,8 +17,8 @@ namespace alib5::data{
             return (a <=> b) == std::strong_ordering::greater;
         };
 
-        using CompareFn = bool(*)(std::string_view a,std::string_view b);
-        using FilterFn = FilterOp(*)(std::string_view key,const AData & node);
+        using CompareFn = bool(std::string_view a,std::string_view b);
+        using FilterFn = FilterOp(std::string_view key,const AData & node);
 
         /// Dump Settings
         size_t dump_indent { 2 };
@@ -28,9 +28,9 @@ namespace alib5::data{
         bool ensure_ascii { false };
         bool warn_when_nan { true };
         int float_precision { -1 };
-        CompareFn sort_object { nullptr };
+        misc::QuickFunc<CompareFn> sort_object { nullptr };
         // 返回true保留,false抛弃
-        FilterFn filter { nullptr }; 
+        misc::QuickFunc<FilterFn> filter { nullptr }; 
 
         /// Parse Settings
         /// 默认使用rapidjson默认parse方式--递归处理
@@ -53,9 +53,9 @@ namespace alib5::data{
         
         bool ALIB5_API parse(std::string_view data,dadata_t & node);
         
-        DumpResult ALIB5_API __internal_dump(__dump_fn fn,void * p,dadata_t & root);
+        DumpResult ALIB5_API __internal_dump(__dump_fn fn,void * p,const dadata_t & root);
 
-        template<IsStringLike T> auto dump(T && target,dadata_t & root){
+        template<IsStringLike T> auto dump(T && target,const dadata_t & root){
             auto fn = [](std::string_view sv, void* ag){
                 using type = std::decay_t<T>;
                 type & out = *static_cast<type*>(ag);

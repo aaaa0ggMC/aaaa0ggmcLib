@@ -13,9 +13,9 @@ namespace alib5{
         std::is_integral_v<std::decay_t<T>> || std::is_floating_point_v<std::decay_t<T>> ||
         std::is_same_v<std::decay_t<T>,bool> || IsStringLike<std::decay_t<T>> || IsStringLike<T>;
 
-    template<class T,class Data> concept IsDataPolicy = requires(T & t,std::pmr::string & dmp,std::string_view data,Data & d){
+    template<class T,class Data> concept IsDataPolicy = requires(T & t,std::pmr::string & dmp,std::string_view data,Data & d,const Data & cd){
         t.parse(data,d);
-        t.dump(dmp,d); // 至少要求dump到pmr::string
+        t.dump(dmp,cd); // 至少要求dump到pmr::string
     }; // 不打算阻止这个了 && !std::is_void_v<decltype(std::declval<T>().parse(std::declval<std::string_view>(), std::declval<Data&>()))>;
 
     /// 默认值
@@ -479,6 +479,32 @@ namespace alib5{
             return std::optional(expect<T>());
         }
 
+        /// 提供Ref访问,其实是借鉴自json ref
+        const AData * ALIB5_API jump_ptr(std::string_view path,bool invoke_err = true) const;
+
+        AData * jump_ptr(std::string_view path,bool invoke_err = true){
+            return const_cast<AData*>(
+                (((const AData *)this)->jump_ptr(path,invoke_err))
+            );
+        }
+
+        /// 其实这里的invoke是死前留言
+        AData& jump(std::string_view path,bool invoke_err = true){
+            AData* ptr = jump_ptr(path,invoke_err);
+            [[unlikely]] if(!ptr){
+                panicf_if(ptr == NULL,"Failed to locate object with path {}!",path);
+            }
+            return *ptr; 
+        }
+
+        const AData& jump(std::string_view path,bool invoke_err = true) const {
+            const AData* ptr = jump_ptr(path,invoke_err);
+            [[unlikely]] if(!ptr){
+                panicf_if(ptr == NULL,"Failed to locate object with path {}!",path);
+            }
+            return *ptr; 
+        }
+
         //// 主要区域-1 : 读取数据,直接覆盖当前的类型 ////
         /// 从内存中读取
         template<IsDataPolicy<AData> DataPolicy = data::JSON> auto load_from_memory(std::string_view data,DataPolicy && parser = DataPolicy()){
@@ -495,26 +521,32 @@ namespace alib5{
         }
 
         /// 写入对象
-        template<IsDataPolicy<AData> Dumper = data::JSON,class T> auto dump(T & target,Dumper && dumper = Dumper()){
+        template<IsDataPolicy<AData> Dumper = data::JSON,class T> auto dump(T & target,Dumper && dumper = Dumper()) const {
             return std::forward<Dumper>(dumper).dump(target,*this);
         }
         /// 写入pmr::string
-        template<IsDataPolicy<AData> Dumper = data::JSON> auto dump_to_string(Dumper && dumper = Dumper(),std::pmr::memory_resource * res = ALIB5_DEFAULT_MEMORY_RESOURCE){
+        template<IsDataPolicy<AData> Dumper = data::JSON> auto dump_to_string(Dumper && dumper = Dumper(),std::pmr::memory_resource * res = ALIB5_DEFAULT_MEMORY_RESOURCE) const {
             std::pmr::string str (res);
             dump(str,std::forward<Dumper>(dumper));
             return str;
         }
         /// 写入entry
-        template<IsDataPolicy<AData> Dumper = data::JSON> auto dump_to_entry(const io::FileEntry& entry,Dumper && dumper = Dumper(),std::pmr::memory_resource * res = ALIB5_DEFAULT_MEMORY_RESOURCE){
+        template<IsDataPolicy<AData> Dumper = data::JSON> auto dump_to_entry(const io::FileEntry& entry,Dumper && dumper = Dumper(),std::pmr::memory_resource * res = ALIB5_DEFAULT_MEMORY_RESOURCE) const {
             std::pmr::string str (res);
             auto val = dump(str,std::forward<Dumper>(dumper));
             entry.write_all(str);
             return val;
         }       
         /// 写入文件
-        template<IsDataPolicy<AData> Dumper = data::JSON> auto dump_to_file(std::string_view file_path,Dumper && dumper = Dumper(),std::pmr::memory_resource * res = ALIB5_DEFAULT_MEMORY_RESOURCE){
+        template<IsDataPolicy<AData> Dumper = data::JSON> auto dump_to_file(std::string_view file_path,Dumper && dumper = Dumper(),std::pmr::memory_resource * res = ALIB5_DEFAULT_MEMORY_RESOURCE) const {
             /// 不在意文件是否存在
             return dump_to_entry(io::load_entry(file_path,false),std::forward<Dumper>(dumper),res);
+        }
+        /// 简单的to_string,以及配合alogger实现dump
+        template<IsDataPolicy<AData> Dumper = data::JSON>auto str(Dumper && dmp = Dumper()) const {return dump_to_string(std::forward<Dumper>(dmp));}
+        
+        template<class STR,class Dumper = data::JSON> void write_to_log(STR & s) const {
+            dump(s,Dumper());
         }
     };
 

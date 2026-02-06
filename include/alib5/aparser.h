@@ -1,7 +1,7 @@
 /**@file aparser.h
 * @brief 简单的命令行词法解析器，上一个版本语法比较诡异
 * @author aaaa0ggmc
-* @date 2026/02/03
+* @date 2026/02/06
 * @version 5.0
 * @copyright Copyright(c) 2026 
 */
@@ -203,6 +203,8 @@ namespace alib5{
                 inline bool match(std::initializer_list<std::string_view> data){
                     return match(std::span(data.begin(),data.end()));
                 }
+
+                inline bool reached_end(){ return cursor >= data.size(); }
 
                 /// 返回一个失效的analyser
                 Analyser ALIB5_API invalid() noexcept;

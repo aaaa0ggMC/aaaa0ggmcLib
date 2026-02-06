@@ -93,9 +93,9 @@ bool JSON::parse(std::string_view v,dadata_t & root){
     return (bool)res;
 }
 
-JSON::DumpResult JSON::__internal_dump(__dump_fn fn,void * p,dadata_t & root){
+JSON::DumpResult JSON::__internal_dump(__dump_fn fn,void * p, const dadata_t & root){
     struct Frame{
-        dadata_t* data;
+        const dadata_t* data;
         int depth;
         std::optional<std::string_view> name;
         int index;
@@ -148,6 +148,8 @@ JSON::DumpResult JSON::__internal_dump(__dump_fn fn,void * p,dadata_t & root){
     });
 
     auto place = [&](Frame & current){
+        /// 最后一行不处理
+        if(queue.empty())return;
         if(!current.last_child){
             fn(place_comma, p);
         }else{
@@ -157,7 +159,7 @@ JSON::DumpResult JSON::__internal_dump(__dump_fn fn,void * p,dadata_t & root){
 
     struct ObjFrame {
         std::string_view name;
-        AData * node;
+        const AData * node;
     };
     std::vector<ObjFrame> frames;
 

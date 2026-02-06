@@ -15,6 +15,8 @@ namespace alib5{
     constexpr int64_t err_conflict_router = -4;
     /// dump冲突
     constexpr int64_t err_dump_error = -5;
+    /// 寻找节点冲突
+    constexpr int64_t err_locate_error = -6;
 
 }
 

@@ -1,7 +1,7 @@
 /**@file autil.h
 * @brief 工具库，提供实用函数
 * @author aaaa0ggmc
-* @date 2026/02/05
+* @date 2026/02/06
 * @version 5.0
 * @copyright Copyright(c) 2026
 */
@@ -200,6 +200,33 @@ namespace alib5{
         std::string_view ALIB5_API get_time() noexcept;
         /// 格式化时间
         std::string_view ALIB5_API format_duration(int seconds) noexcept;
+    
+        /// 也许很快的function
+        template<class T> struct QuickFunc{
+            std::variant<T*,std::function<T>> in_func;
+
+            operator bool(){
+                if(auto* slow = std::get_if<std::function<T>>(&in_func)){
+                    return slow->operator bool();
+                }
+                return std::get<T*>(in_func) == nullptr;
+            }
+
+            template<class M> QuickFunc(M && func){
+                if constexpr(requires(T ** v,M && t){ *v = t; }){
+                    in_func = (T*)std::forward<M>(func);
+                }else{
+                    in_func = std::function<T>(std::forward<M>(func));
+                }
+            }
+
+            template<class... Args> auto operator()(Args&&... args){
+                if(auto* fast = std::get_if<T*>(&in_func)){
+                    return (*fast)(std::forward<Args>(args)...);
+                }
+                return std::get<std::function<T>>(in_func)(std::forward<Args>(args)...);
+            }
+        };
     }
 
     /// 字符串处理函数
@@ -467,13 +494,12 @@ namespace alib5{
         GlobalMemUsage ALIB5_API get_global_mem_usage() noexcept;
     }
 };
-#include <iostream>
+
 // 这里是统一的inline实现
 namespace alib5{
     /// 写入文件
     template<CanExtendString T> size_t write_all(std::string_view path,T & output){
         if(path.empty())return std::variant_npos;
-        std::cout << "Writing into" << path << std::endl;
         // 这里主要是惧怕path是从一段字符串截取下来的，不构建string会导致输出错误
         FILE * f = std::fopen(std::string(path).c_str(),"wb");
         if(!f){
