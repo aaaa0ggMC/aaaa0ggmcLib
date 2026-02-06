@@ -13,6 +13,10 @@
     - [校验性能](#校验性能)
       - [输出](#输出)
   - [CV              :2.431%](#cv--------------2431)
+    - [加载json性能,主要得益于rapidjson SAX模式](#加载json性能主要得益于rapidjson-sax模式)
+      - [输出](#输出-1)
+  - [](#)
+  - [CV              :1.422%](#cv--------------1422)
   - [详解](#详解)
     - [adata的基础架构](#adata的基础架构)
     - [AI总结出的解析](#ai总结出的解析)
@@ -255,8 +259,40 @@ CV              :2.431%
 --------------------------------
 </pre>
 
+### 加载json性能,主要得益于rapidjson SAX模式
+```cpp
+    aout << Benchmark([]{
+        AData schema;
+        schema.load_from_memory(R"({
+            "name" : ["TYPE STRING","Hello"],
+            "obj" : {
+                "name" : ["","What?"],
+                "ids" : [
+                    "TYPE ARRAY MIN 1 MAX 100",
+                    ["TYPE INT",0]    
+                ]
+            }
+        })");
+    }).run(1000, 100).name("parse cost") << fls;
+```
+#### 输出
+<pre>
+-----------------------
+parse cost
+
+TimeCost        :70.16121799999998ms
+RunTimes        :100000
+Average         :701.6121526248753ns
+ShortestAvgCall :680.3240000000001ns
+LongestAvgCall  :736.127ns
+Stddev          :9.9766135e-06
+CV              :1.422%
+--------------------------------
+</pre>
+
 ## 详解
 ### adata的基础架构
+
 <detail>
 <summary>给ai的美人鱼提示词</summary>
 
@@ -284,6 +320,8 @@ operator = 提供隐式赋值
 支持is_xxx()判断,支持xxx()返回类型(类型不对会panic)
 
 </detail>
+
+
 
 ```mermaid
 classDiagram
