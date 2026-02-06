@@ -28,9 +28,9 @@ namespace alib5::data{
         bool ensure_ascii { false };
         bool warn_when_nan { true };
         int float_precision { -1 };
-        misc::QuickFunc<CompareFn> sort_object { nullptr };
+        std::function<CompareFn> sort_object { nullptr };
         // 返回true保留,false抛弃
-        misc::QuickFunc<FilterFn> filter { nullptr }; 
+        std::function<FilterFn> filter { nullptr }; 
 
         /// Parse Settings
         /// 默认使用rapidjson默认parse方式--递归处理

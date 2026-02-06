@@ -200,33 +200,6 @@ namespace alib5{
         std::string_view ALIB5_API get_time() noexcept;
         /// 格式化时间
         std::string_view ALIB5_API format_duration(int seconds) noexcept;
-    
-        /// 也许很快的function
-        template<class T> struct QuickFunc{
-            std::variant<T*,std::function<T>> in_func;
-
-            operator bool(){
-                if(auto* slow = std::get_if<std::function<T>>(&in_func)){
-                    return slow->operator bool();
-                }
-                return std::get<T*>(in_func) == nullptr;
-            }
-
-            template<class M> QuickFunc(M && func){
-                if constexpr(requires(T ** v,M && t){ *v = t; }){
-                    in_func = (T*)std::forward<M>(func);
-                }else{
-                    in_func = std::function<T>(std::forward<M>(func));
-                }
-            }
-
-            template<class... Args> auto operator()(Args&&... args){
-                if(auto* fast = std::get_if<T*>(&in_func)){
-                    return (*fast)(std::forward<Args>(args)...);
-                }
-                return std::get<std::function<T>>(in_func)(std::forward<Args>(args)...);
-            }
-        };
     }
 
     /// 字符串处理函数
