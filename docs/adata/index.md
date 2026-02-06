@@ -142,7 +142,8 @@ classDiagram
     class Value {
         <<Small Object Optimization>>
         -Type tag
-        -Union {pmr::string, int64, double, bool}
+        %% 下面这行修正了语法，去掉了大括号
+        -Union~pmr::string, int64, double, bool~ val
         +to~T~() const
         +expect~T~() const
         +transform~T~()
