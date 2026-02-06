@@ -8,7 +8,7 @@
     - [Features](#features)
     - [规划](#规划)
   - [详解](#详解)
-    - [adata的架构](#adata的架构)
+    - [adata的基础架构](#adata的基础架构)
   
 ## 总纲
 AData是一个动态的数据与配置文件解决方案,具备类似动态语言如Python/Javascript等的灵活性与不错的安全性(具体的各种BUG我还没测试出来,需要漫长的维护期)与性能,同时支持数据校验.AData并不绑定一个数据存储形式(JSON,XML,TOML...)而是力图成为一个比较通用的数据解决方案,类似这些数据存储形式的IR.
@@ -101,30 +101,118 @@ AData是一个动态的数据与配置文件解决方案,具备类似动态语�
 - 提供对TOML的解析(因为老版本的ADATA就是提供了对JSON&TOML的解析的)
 
 ## 详解
-### adata的架构
+### adata的基础架构
+<detail>
+<summary>给ai的美人鱼提示词</summary>
+基础类型
+Value->{pmr::string,int64_t,double,bool} managed by type{STRING,BOOL,INT,FLOATING}
+| |
+提供
+| |
+to\< T > expect\< T > 不影响内部类型的转换
+transform\< T > 影响内部类型的转换
+
+Object->{alib5::ecs::detail::LinearStorage,umap std::pmr::string,size_t} 提供线性存储,因此纯引用可能失效,采用freelist策略,索引不变
+
+Array->{vector} 
+
+AData std::varaint \< std::monostate,Value,Object,Array > 
+set\< T >() 提供强制初始化
+rewrite\< T >(T && val) 提供强制重写
+operator = 提供隐式赋值
+支持 Null <==> Array/Object/Value
+不支持 Value Array Object之间互相转化,会直接panic
+转发 operator=给Value
+转发 [ index ]给Array
+转发 [ name ] 给Object
+支持is_xxx()判断,支持xxx()返回类型(类型不对会panic)
+</detail>
+
 ```mermaid
-graph LR
-    subgraph Input
-        JSON[JSON Source]
-        TOML[TOML Source]
-        XML[XML Source]
-    end
+classDiagram
+    class AData {
+        <<Variant Wrapper>>
+        -std::variant~Monostate, Value, Object, Array~ data
+        +set~T~()
+        +rewrite~T~()
+        +operator=()
+        +is_xxx()
+    }
 
-    subgraph Core
-        AData[("AData (Internal IR)")]
-        Validator{"Validator<br/>(Schema Check)"}
-    end
+    class Value {
+        <<Small Object Optimization>>
+        -Type tag
+        -Union {pmr::string, int64, double, bool}
+        +to~T~() const
+        +expect~T~() const
+        +transform~T~()
+    }
 
-    subgraph Output
-        CPP[C++ Objects]
-        Dump[Dumped Strings/Files]
-    end
+    class Object {
+        <<Linear Storage>>
+        -LinearStorage storage
+        -umap~string, size_t~ index_map
+        -FreeList strategy
+        +operator[](string)
+    }
 
-    JSON --> AData
-    TOML --> AData
-    XML --> AData
-    AData --> Validator
-    Validator -- Pass --> CPP
-    Validator -- Pass --> Dump
+    class Array {
+        -std::vector~AData~ list
+        +operator[](int)
+    }
+
+    class Null {
+        <<std::monostate>>
+    }
+
+    AData *-- Value : Holds
+    AData *-- Object : Holds
+    AData *-- Array : Holds
+    AData *-- Null : Default
+    
+    note for Value "支持 to/expect (无损) \n与 transform (有损转换)"
+    note for Object "索引稳定 (Stable Index) \n引用可能失效 (Ref Invalidation)"
 ```
 
+```mermaid
+graph TD
+    %% 节点定义
+    subgraph AData_Type_System [AData Type System]
+        N((Null / Monostate))
+        V[Value<br/>String/Int/Bool/Float]
+        O[Object<br/>Key-Value]
+        A[Array<br/>List]
+    end
+
+    %% 允许的转换 (初始化/重写)
+    N == "set< T >() / operator=" ==> V
+    N == "set< T >() / operator=" ==> O
+    N == "set< T >() / operator=" ==> A
+    
+    V -.->|"rewrite< Object >()"| O
+    V -.->|"rewrite< Array >()"| A
+    O -.->|"rewrite<...>()"| N
+    
+    %% 内部转换
+    V -- "transform< T >()<br/>(改变内部类型)" --> V
+    V -- "to< T >() / expect< T >()<br/>(仅读取/试图转换)" --> V
+
+    %% 禁止的转换 (Panic)
+    V -- "Implicit Cast / Assignment" --> O
+    style O fill:#f9f,stroke:#333,stroke-width:2px
+    linkStyle 6 stroke:red,stroke-width:3px
+    
+    O -- "Implicit Cast" --> A
+    linkStyle 7 stroke:red,stroke-width:3px
+    
+    A -- "Implicit Cast" --> V
+    linkStyle 8 stroke:red,stroke-width:3px
+
+    %% 访问行为
+    A -- "operator[ int ]" --> Content[Child AData]
+    O -- "operator[ string ]" --> Content
+    
+    V -- "operator[]" --> Panic[CRASH / PANIC]
+    style Panic fill:#ff0000,color:#fff
+    linkStyle 11 stroke:red,stroke-width:4px
+```
