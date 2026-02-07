@@ -95,7 +95,7 @@ Translator::Result Translator::load_from_entry(io::FileEntry entry,Translator::I
     return r;
 }  
 
-std::string_view Translator::get_key_value(std::string_view key) const {
+std::string_view Translator::get_key_value_dots(std::string_view key) const {
     // 切割
     // 这里就是纯纯的数据切割,因此不需要拼接字符串
     auto it = translations.object().find(current_language);

@@ -74,7 +74,7 @@ namespace alib5{
             JsonP
         };
         Type type;
-    // private:
+    private:
         friend class Translator;
 
         std::pmr::string value_buffer;
@@ -171,10 +171,10 @@ namespace alib5{
         }
 
         /// 并没有缓存,使用的是dots格式,见flatten_dots
-        std::string_view ALIB5_API get_key_value(std::string_view key) const override;
+        std::string_view ALIB5_API get_key_value_dots(std::string_view key) const;
 
         /// 使用jsonp格式
-        std::string_view get_key_value_jsonp(std::string_view key) const {
+        std::string_view  get_key_value(std::string_view key) const override {
             auto it = translations.object().find(current_language);
             if(it == translations.object().end())
                 return key;
