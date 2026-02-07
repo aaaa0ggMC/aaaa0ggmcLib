@@ -4,6 +4,7 @@
 #include <alib5/adebug.h>
 #include <alib5/aref.h>
 #include <alib5/ecs/linear_storage.h>
+#include <deque>
 
 namespace alib5{
     /// 数组访问自动扩展
@@ -17,6 +18,21 @@ namespace alib5{
         t.parse(data,d);
         t.dump(dmp,cd); // 至少要求dump到pmr::string
     }; // 不打算阻止这个了 && !std::is_void_v<decltype(std::declval<T>().parse(std::declval<std::string_view>(), std::declval<Data&>()))>;
+
+    enum class MergeOperation : int64_t{
+        Override,
+        Skip
+    };
+    /// 支持修改dest node (因此也就要求我这个一定要是安全BFS/DFS,小心引用失效)     
+    template<class T,class Data> concept IsMergeFn = requires(T&t,Data & dest,const Data & src){
+        { t(dest,src) } -> std::convertible_to<MergeOperation>;
+    };
+    template<class T,class Data> concept IsDiffFn = requires(T&t,const Data & dest,const Data & src){
+        { t(dest,src) } -> std::convertible_to<MergeOperation>;
+    };
+    template<class T,class Data> concept IsPruneFn = requires(T&t,const Data & dest){
+        { t(dest) } -> std::convertible_to<bool>;
+    };
 
     /// 默认值
     namespace data{
@@ -124,7 +140,7 @@ namespace alib5{
             > object_mapper;
         
             /// 构造对象
-            ALIB5_API Object(std::pmr::memory_resource* __a);
+            ALIB5_API Object(std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE);
             /// Object对索引对齐要求十分严格,因此多线程操作一定要自己加锁
             /// 实际上多线程操作数据加锁应该是常识
             std::pair<AData*,size_t> ALIB5_API ensure_node(std::string_view key);
@@ -235,7 +251,7 @@ namespace alib5{
             /// 子类
             container_t values;
 
-            ALIB5_API Array(std::pmr::memory_resource * __a);
+            ALIB5_API Array(std::pmr::memory_resource * __a = ALIB5_DEFAULT_MEMORY_RESOURCE);
 
             /// 比较安全的访问
             /// 但是禁不起shrink
@@ -368,6 +384,21 @@ namespace alib5{
         AData(const AData& other, std::pmr::memory_resource* __a):allocator(__a){
             data = clone_data(other.data, __a);
         }
+        AData(const AData::Object& other, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE):allocator(__a){
+            set<AData::Object>();
+            object() = other;
+        }
+        AData(const AData::Array& other, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE):allocator(__a){
+            set<AData::Array>();
+            array() = other;
+        }
+        AData(const Value& other, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE):allocator(__a){
+            set<Value>();
+            value() = other;
+        }
+        AData(const std::monostate & other, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE):allocator(__a){
+            set<std::monostate>();
+        }
         ~AData() = default;
 
         /// 解决父子之间赋值出现的crash
@@ -419,6 +450,21 @@ namespace alib5{
             }else{
                 // this->set<std::monostate>();
                 this->data = clone_data(d, allocator);
+            }
+            return *this;
+        }
+
+        /// initializer构造,但是只支持array...
+        AData(std::initializer_list<const AData> list) {
+            *this = list;
+        }
+        AData& operator=(std::initializer_list<const AData> list) {
+            [[unlikely]] if(!is_array() && !is_null()){
+                panic_if(!is_array() && !is_null(),"Implicit type cast is forbidden.");
+            }
+            auto& arr = this->set<Array>();
+            for(auto&& item : list){
+                arr.values.emplace_back(std::forward<decltype(item)>(item), this->allocator);
             }
             return *this;
         }
@@ -504,6 +550,54 @@ namespace alib5{
             }
             return *ptr; 
         }
+
+        static inline MergeOperation __merge__default(AData & dest,const AData& src){
+            return MergeOperation::Override;
+        }
+        static inline MergeOperation __diff__default(const AData & dest,const AData& src){
+            return MergeOperation::Override;
+        }
+        static inline bool __prune__default(const AData & d){
+            if(d.is_null())return true;
+            else if(d.is_array() && d.array().size() == 0)return true;
+            else if(d.is_object() && d.object().size() == 0)return true;
+            return false;
+        }
+        
+        /// 修剪算法
+        template<bool PruneArray = false,IsPruneFn<AData> EmptyFn = decltype(__prune__default)>
+        AData& prune(EmptyFn && fn = __prune__default);
+
+
+        template<class Other, class MergeFn>
+        AData& __merge_impl(Other&& in, MergeFn&& fn);
+
+        /// 合并算法
+        template<IsMergeFn<AData> MergeFn = decltype(__merge__default)>
+        inline AData& merge(
+            const AData & in,
+            MergeFn && fn = __merge__default
+        ){
+            return __merge_impl<const AData &>(in,std::forward<MergeFn>(fn));
+        }
+
+        /// 快速右值
+        template<IsMergeFn<AData> MergeFn = decltype(__merge__default)>
+        inline AData& merge(
+            AData && in,
+            MergeFn && fn = __merge__default
+        ){
+            return __merge_impl<AData &&>(std::move(in),std::forward<MergeFn>(fn));
+        }
+
+        /// 返回true表示存在差异
+        template<IsDiffFn<AData> DiffFn = decltype(__diff__default)>
+        inline bool diff(
+            const AData & in,
+            AData * added_or_modified = nullptr,
+            AData * src_lack_of = nullptr,
+            DiffFn && fn = __diff__default
+        ) const;
 
         //// 主要区域-1 : 读取数据,直接覆盖当前的类型 ////
         /// 从内存中读取
@@ -696,6 +790,223 @@ namespace alib5{
         if constexpr(std::is_same_v<T,std::monostate>) {
             return data.emplace<std::monostate>();
         }else return data.emplace<T>(allocator);
+    }
+
+    template<typename Other, typename MergeFn>
+    AData& AData::__merge_impl(Other&& in, MergeFn&& fn){
+        constexpr bool is_rvalue = !std::is_lvalue_reference_v<Other>;
+        using SourcePtr = std::conditional_t<is_rvalue, AData*, const AData*>;
+        
+        struct Job{
+            AData* destination;
+            SourcePtr source;
+            // 显式构造函数，解决编译器对局部结构体聚合初始化的推导失败
+            Job(AData* d, SourcePtr s) : destination(d), source(s){}
+        };
+        
+        struct ObjNext{
+            size_t index;
+            SourcePtr src;
+            ObjNext(size_t i, SourcePtr s) : index(i), src(s){}
+        };
+
+        std::vector<Job> jobs, next_jobs;
+        std::vector<ObjNext> object_nexts;
+        jobs.emplace_back(this, const_cast<SourcePtr>(&in));
+
+        while(!jobs.empty()){
+            while(!jobs.empty()){
+                auto [dest, src] = jobs.back();
+                jobs.pop_back();
+
+                if(dest->is_object() && src->is_object()){
+                    auto & dobj = dest->object();
+                    // 这里必须转换，否则 mit 无法 std::move
+                    auto & sobj = const_cast<std::remove_const_t<std::remove_reference_t<decltype(src->object())>>&>(src->object());
+                    
+                    object_nexts.clear();
+                    for(auto mit : sobj){
+                        auto it = dobj.find(mit.first);
+                        if(it != dobj.end()){
+                            object_nexts.emplace_back(it.it->second, &mit.second);
+                        }else{
+                            if constexpr (is_rvalue){
+                                dobj[mit.first] = std::move(mit.second);
+                            }else{
+                                dobj[mit.first] = mit.second;
+                            }
+                        }
+                    }
+                    for(auto [i, n] : object_nexts){
+                        next_jobs.emplace_back(&dobj.children[i], n);
+                    }
+                }else if(fn(*dest, *src) == MergeOperation::Override){
+                    if constexpr (is_rvalue){
+                        dest->rewrite(std::move(*const_cast<AData*>(src)));
+                    }else{
+                        dest->rewrite(*src);
+                    }
+                }
+            }
+
+            jobs = std::move(next_jobs);
+            next_jobs.clear();
+        }
+
+        return *this;
+    }
+
+    template<IsDiffFn<AData> DiffFn>
+    inline bool AData::diff(
+        const AData & in,
+        AData * added_or_modified,
+        AData * src_lack_of,
+        DiffFn && fn
+    ) const{
+        struct Job{
+            const AData * destination;
+            const AData * source;
+            AData * current_add;
+            AData * current_deleted;
+        };
+        bool ret = false;
+        std::vector<Job> jobs,next_jobs;
+        jobs.emplace_back(this,&in,added_or_modified,src_lack_of);
+
+        while(!jobs.empty()){
+            while(!jobs.empty()){
+                auto [dest,src,cadd,cdel] = jobs.back();
+                jobs.pop_back();
+
+                if(dest->is_object() && src->is_object()){
+                    auto & dobj = dest->object();
+                    auto & sobj = src->object();
+
+                    if(cadd){
+                        cadd->template set<dobject_t>();
+                        cadd->object().children.reserve(sobj.size());
+                    }
+                    if(cdel){
+                        cdel->template set<dobject_t>();
+                        cdel->object().children.reserve(std::max(dobj.size(),sobj.size()));
+                    }
+
+                    for(auto mit : dobj){
+                        auto it = sobj.find(mit.first);
+                        if(it == sobj.end()){
+                            if(!added_or_modified && !src_lack_of)return true;
+                            ret = true;
+                            if(src_lack_of)(*cdel)[mit.first] = mit.second;
+                        }
+                    }
+
+                    for(auto mit : sobj){
+                        auto it = dobj.find(mit.first);
+                        if(it != dobj.end()){
+                            jobs.emplace_back(
+                                &(mit.second),
+                                &(*it).second,
+                                cadd ? &(*cadd)[mit.first] : nullptr,
+                                cdel ? &(*cdel)[mit.first] : nullptr
+                            );
+                        }else{
+                            if(!added_or_modified && !src_lack_of)return true;
+                            ret = true;
+                            if(added_or_modified)(*cadd)[mit.first] = mit.second;
+                        }
+                    }
+                    
+                }else if(fn(*dest,*src) == MergeOperation::Override){
+                    if(!added_or_modified && !src_lack_of)return true;
+                    ret = true;
+                    if(added_or_modified)cadd->rewrite(*src);
+                }
+            }
+
+            jobs = std::move(next_jobs);
+            next_jobs.clear();
+        }
+
+        return ret;
+    }
+
+    template<bool PruneArray,IsPruneFn<AData> EmptyFn>
+    AData& AData::prune(EmptyFn && fn){
+        struct Frame{
+            AData * current;
+            bool expanded {false};
+        };
+        std::deque<Frame> frames;
+        std::vector<std::string_view> key_rms;
+        frames.emplace_back(this);
+
+        while(!frames.empty()){
+            Frame& d = frames.back();
+            // 因为要递归处理,因此不能立马pop_back
+            // 没必要的depth确定
+            //if(d.current == nullptr){
+            //    continue;
+            //}
+            if(d.current->is_object()){
+                auto & obj = d.current->object();
+                if(obj.size()){
+                    key_rms.clear();
+                    size_t pop_p = frames.size() - 1;
+                    // 遍历深入检测,对于object中的object进行增加
+                    for(auto mit : d.current->object()){
+                        if(fn(mit.second)){
+                            key_rms.emplace_back(mit.first);
+                        }else{
+                            // 如果产生了push,那么obj一定最后非空
+                            // 所以下面的fn(*d.current)正常情况一定返回false?
+                            // 算了,还是依赖pop_p吧
+                            if(!d.expanded)frames.emplace_back(&mit.second);
+                        }
+                    }
+                    for(auto k : key_rms){
+                        obj.remove(k);
+                    }
+                    if(!d.expanded){
+                        if(fn(*d.current)){
+                            d.current->set_null();
+                            frames.erase(frames.begin() + pop_p,frames.end());
+                        }
+                        d.expanded = true;
+                        continue;
+                    }
+                }
+            }
+            if constexpr(PruneArray){
+                if(d.current->is_array()){
+                    auto & arr = d.current->array();
+                    if(arr.size()){
+                        for(auto it = arr.values.begin();it < arr.values.end();){
+                            if(fn(*it)){
+                                arr.values.erase(it);
+                            }else ++it;
+                        }
+                        if(!d.expanded){
+                            // 增加对子类的检查
+                            if(fn(*d.current)){
+                                d.current->set_null();
+                                frames.pop_back();
+                            }else{
+                                for(auto & i : arr.values){
+                                    frames.emplace_back(&i);
+                                }
+                            }
+                            d.expanded = true;
+                            continue;
+                        }
+                    }
+                }
+            }
+            if(fn(*d.current)){
+                d.current->set_null();
+            }
+            frames.pop_back();
+        }
+        return *this;
     }
 }
 

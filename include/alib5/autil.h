@@ -1,7 +1,7 @@
 /**@file autil.h
 * @brief 工具库，提供实用函数
 * @author aaaa0ggmc
-* @date 2026/02/06
+* @date 2026/02/07
 * @version 5.0
 * @copyright Copyright(c) 2026
 */
@@ -299,6 +299,11 @@ namespace alib5{
             /// 是否有效
             inline bool invalid() const{
                 return (type == not_found) || (!path.compare(""));
+            }
+
+            /// 是否为文件夹
+            inline bool is_directory() const{
+                return std::filesystem::is_directory(path);
             }
 
             /// 重新扫描，适用于手动情况

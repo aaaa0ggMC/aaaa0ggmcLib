@@ -124,6 +124,7 @@ bool ALIB5_API Validator::validate(AData & doc,Result & result){
 
         // 默认值覆盖
         if(d->is_null() && n->default_value){
+            /// 因为隐式转换静止,因此确保一下是NULL 
             *d = *n->default_value;
         }else if(!d->is_null() || (!n->array_subs.size() && !n->children.size())){
             auto type_check = simp_validate_type(*d, *n);
@@ -132,14 +133,19 @@ bool ALIB5_API Validator::validate(AData & doc,Result & result){
             //        node_type_str(n->type_restrict) << " " <<
             //        node_type_str(type_check.second) << std::endl;
             if(!type_check.first){
-                if(result.enable_string_errors)result.record_error(
-                    "{} : Expected type {},got {}",
-                    get_vitree(),
-                    node_type_str(n->type_restrict),
-                    node_type_str(type_check.second)
-                );
-                success = false;
-                continue;
+                // std::cout << n->override_if_conflict << std::endl;
+                if(n->override_if_conflict && n->default_value){
+                    d->rewrite(*n->default_value);
+                }else{
+                    if(result.enable_string_errors)result.record_error(
+                        "{} : Expected type {},got {}",
+                        get_vitree(),
+                        node_type_str(n->type_restrict),
+                        node_type_str(type_check.second)
+                    );
+                    success = false;
+                    continue;
+                }
             }
         }else{
             // std::cout << "GENNNN" << std::endl;
@@ -344,7 +350,6 @@ std::pmr::string Validator::from_adata(const AData & doc){
         auto analyser = parser.analyse();
         auto cursor = analyser.as_cursor();
         auto current = cursor.head();
-        bool inited = true;
         if(current.view() == "")return true;
         // 这里强行修复单token问题
         cursor.matched = true;
@@ -352,9 +357,9 @@ std::pmr::string Validator::from_adata(const AData & doc){
         constexpr std::string_view lb = "(";
         constexpr std::string_view rb = ")";
 
-        while(!cursor.reached_end() || inited){
-            inited = false;
+        while(true){
             bg_parse.clear();
+            // std::cout << current.view() << std::endl;
             for(auto ch : current.view())bg_parse.push_back(std::toupper(ch));
             if(bg_parse == "OPTIONAL"){
                 restriction.required = false;
@@ -362,6 +367,8 @@ std::pmr::string Validator::from_adata(const AData & doc){
             }else if(bg_parse == "REQUIRED"){
                 // 这个也加入识别可以强调语义
                 restriction.required = true;
+            }else if(bg_parse == "OVERRIDE_CONFLICT"){
+                restriction.override_if_conflict = true;
             }else if(bg_parse == "TYPE"){
                 auto v = cursor.next();
                 if(v){
@@ -448,6 +455,7 @@ std::pmr::string Validator::from_adata(const AData & doc){
                 // ignore useless tokens
             }
             current = cursor.next();
+            if(current.view() == "")break;
         }
         /// 二次校验大小
         if(restriction.max_length.to<const char*>() != "" &&

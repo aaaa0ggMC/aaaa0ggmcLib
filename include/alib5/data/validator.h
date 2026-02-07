@@ -45,6 +45,8 @@ namespace alib5{
             std::pmr::vector<Node> array_subs;
             /// 因为ARRAY分tuple和list,这个作为标识
             bool is_tuple;
+            /// 如果存在默认值,那么冲突的时候覆盖
+            bool override_if_conflict;
             
             Node(std::pmr::memory_resource * __a)
             :validates(__a)
@@ -63,28 +65,7 @@ namespace alib5{
                 children.clear();
                 array_subs.clear();
                 is_tuple = false;
-            }
-        };
-
-        struct ALIB5_API ValidateMethod{
-            using FastFn = bool(*)(AData & node,std::pmr::vector<std::pmr::string> & args);
-            using SlowFn = std::function<bool(AData & node,std::pmr::vector<std::pmr::string> & args)>;
-
-            std::variant<FastFn,SlowFn> method;
-
-            template<class Fn>
-            ValidateMethod(Fn && f){
-                if constexpr(std::is_convertible_v<Fn, FastFn>){
-                    method = static_cast<FastFn>(f);
-                }else{
-                    method = SlowFn(std::forward<Fn>(f));
-                }
-            }
-            bool operator()(AData & node,std::pmr::vector<std::pmr::string> & args){
-                if(auto* fast = std::get_if<FastFn>(&method)){
-                    return (*fast)(node, args);
-                }
-                return std::get<SlowFn>(method)(node, args);
+                override_if_conflict = false;
             }
         };
 
@@ -100,10 +81,16 @@ namespace alib5{
                 detail::TransparentStringEqual    
             > missings;
 
+            void reset(){
+                success = true;
+                recorded_errors.clear();
+                missings.clear();
+            }
+
             Result(std::pmr::memory_resource * __a = ALIB5_DEFAULT_MEMORY_RESOURCE)
             :recorded_errors(__a)
             ,missings(__a){
-                success = true;
+                reset();
                 enable_string_errors = true;
                 enable_missing = true;
             }
@@ -127,6 +114,8 @@ namespace alib5{
             }
         };
 
+        using ValidateMethod = std::function<bool(AData & node,std::pmr::vector<std::pmr::string> & args)>;
+
         Node root;
         str::StringPool<std::pmr::string> activated_validates_str_pool;
         std::pmr::unordered_map<std::string_view,ValidateMethod> validates;
@@ -137,13 +126,25 @@ namespace alib5{
         ,activated_validates_str_pool(__a)
         ,allocator(__a){}
 
+        Validator(const AData & d,std::pmr::memory_resource * __a = ALIB5_DEFAULT_MEMORY_RESOURCE)
+        :root(__a)
+        ,activated_validates_str_pool(__a)
+        ,allocator(__a){
+            from_adata(d);
+        }
+
+        /// 处理校验方案
+        ValidateMethod& emplace_validate_method(std::string_view name,ValidateMethod method){
+            return validates.emplace(activated_validates_str_pool.get(name),method).first->second;
+        }
+
         /// 返回错误信息,如果length为0表示没有错误信息
         std::pmr::string ALIB5_API from_adata(const AData & doc);
         
-        /// 进行校验
+        /// 进行校验,returns false if fails
         bool ALIB5_API validate(AData & doc,Result & result);
 
-        /// 简单包装
+        /// 简单包装,returns false if fails
         inline Result validate(AData & doc){
             Result r;
             validate(doc,r);

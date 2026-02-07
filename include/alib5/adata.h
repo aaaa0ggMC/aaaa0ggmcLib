@@ -1,7 +1,7 @@
-/**@file acommand.h
+/**@file adata.h
 * @brief 简单的数据结构
 * @author aaaa0ggmc
-* @date 2026/02/06
+* @date 2026/02/07
 * @version 5.0
 * @copyright Copyright(c) 2026 
 */

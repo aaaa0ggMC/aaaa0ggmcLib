@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 线性存储类，目前使用vector，后期可以变成sparse_set啥的
  * @version 0.1
- * @date 2026/01/29
+ * @date 2026/02/07
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -170,6 +170,10 @@ namespace alib5::ecs::detail{
         using reference = T&;
         /// 基础类型
         using value_type = T;
+        /// reserve数据
+        inline auto reserve(size_t sz){
+            return data.reserve(sz);
+        }
         /// 重载[]获取对应的引用
         inline reference operator[](size_t index){
             return data[index];

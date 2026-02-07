@@ -53,6 +53,7 @@ namespace alib5::data{
         
         JSON(const JSONConfig& c = JSONConfig()):cfg(c){}
         
+        /// returns false if error
         bool ALIB5_API parse(std::string_view data,dadata_t & node);
         
         DumpResult ALIB5_API __internal_dump(__dump_fn fn,void * p,const dadata_t & root);
