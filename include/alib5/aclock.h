@@ -1,7 +1,7 @@
 /**@file autil.h
 * @brief 时钟库，提供实用计时类包装
 * @author aaaa0ggmc
-* @date 2026/01/28
+* @date 2026/02/11
 * @version 5.0
 * @copyright Copyright(c) 2026
 */
@@ -163,7 +163,9 @@ namespace alib5{
         /// 等待直到下一帧时间到达
         inline void wait(){
             // 如果没到时间，则进行补偿性睡眠
+            if(desire_fps <= 0)return;
             while(!trig.test()){
+                // printf("TRigger %f\n",trig.duration);
                 double remaining = trig.duration - (clk.get_all() - trig.m_recorded_time);
                 if(remaining > 1.0){
                     // 只有剩余时间较长时才真正 sleep，避免调度开销导致不准

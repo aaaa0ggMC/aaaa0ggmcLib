@@ -1,7 +1,7 @@
 /**@file autil.h
 * @brief 工具库，提供实用函数
 * @author aaaa0ggmc
-* @date 2026/02/07
+* @date 2026/02/11
 * @version 5.0
 * @copyright Copyright(c) 2026
 */
@@ -476,7 +476,7 @@ namespace alib5{
 // 这里是统一的inline实现
 namespace alib5{
     /// 写入文件
-    template<CanExtendString T> size_t write_all(std::string_view path,T & output){
+    template<CanExtendString T> size_t io::write_all(std::string_view path,T & output){
         if(path.empty())return std::variant_npos;
         // 这里主要是惧怕path是从一段字符串截取下来的，不构建string会导致输出错误
         FILE * f = std::fopen(std::string(path).c_str(),"wb");
@@ -491,7 +491,7 @@ namespace alib5{
 
     /// 写入文件
     template<CanExtendString T> size_t io::FileEntry::write_all(T & input) const{
-        return alib5::write_all(path,input);
+        return alib5::io::write_all(path,input);
     }
 
     /// 内置读取文件
@@ -516,7 +516,7 @@ namespace alib5{
     }
 
     /// 读取文件
-    template<CanExtendString T> inline size_t read_all(std::string_view path,T & output){
+    template<CanExtendString T> inline size_t io::read_all(std::string_view path,T & output){
         io::FileEntry entry = io::load_entry(path);
         auto size = entry.file_size();
         if(size == std::variant_npos){
