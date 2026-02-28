@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.10)
 project(aaaa0ggmcLib)
 
+# 独立的ASIO
+add_compile_definitions(PRIVATE ASIO_STANDALONE)
+if(WIN32)    
+    add_compile_definitions(PRIVATE _WIN32_WINNT=0x0601)
+    link_libraries(ws2_32 mswsock)
+endif()
+
 # 是的，我需要最新的C++版本，虽然我代码可能没用上
 # 但是我喜欢凑热闹
 set(CMAKE_CXX_STANDARD 26)

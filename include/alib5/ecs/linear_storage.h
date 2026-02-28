@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 线性存储类，目前使用vector，后期可以变成sparse_set啥的
  * @version 0.1
- * @date 2026/02/07
+ * @date 2026/02/28
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -17,6 +17,7 @@
 #include <vector>
 #include <bit>
 #include <memory_resource>
+#include <alib5/ecs/component_concepts.h>
 
 namespace alib5::ecs::detail{
     /// @brief 是否可以通过reset方法实现建议重构？
@@ -157,9 +158,9 @@ namespace alib5::ecs::detail{
      * @note 内部类型支持的注入有reset(...)，会在复用的时候调用，要是不存在reset会选择构造函数
      *  因此建议构造函数和reset签名一致，但是不是硬性要求
      */
-    template<class T> struct ALIB5_API LinearStorage{
+    template<class T,class Internal = std::pmr::vector<T>> struct ALIB5_API LinearStorage{
         /// @brief 目前的内部数据类型
-        std::pmr::vector<T>         data;
+        Internal         data;
         /// @brief 空闲数据块列表
         std::pmr::vector<size_t>     free_elements;
         /// @brief 用于遍历的列表
@@ -176,7 +177,13 @@ namespace alib5::ecs::detail{
         }
         /// 重载[]获取对应的引用
         inline reference operator[](size_t index){
-            return data[index];
+            if constexpr(requires{data.find(index);}) {
+                auto it = data.find(index);
+                panic_if(it == data.end(), "Out of bounds!");
+                return it->second;
+            }else{
+                return data[index];
+            }
         }
         /// 获取当前的数据量
         inline size_t size(){return data.size();}
@@ -233,7 +240,16 @@ namespace alib5::ecs::detail{
         /// @return 对象的引用
         template<class...Ts> inline T& next(Ts&&... args){
             available_bits.ensure(data.size() + 1);
-            return data.emplace_back(std::forward<Ts>(args)...);
+            if constexpr(requires{data.emplace_back(std::forward<Ts>(args)...);}){
+                return data.emplace_back(std::forward<Ts>(args)...);
+            }else if constexpr(requires{data.emplace(std::forward<Ts>(args)...).first;}){
+                return data.emplace(
+                    data.size(), // 递增数列
+                    std::forward<Ts>(args)...
+                ).first->second;
+            }else{
+                static_assert(requires{data.emplace_back(std::forward<Ts>(args)...);},"Usupported types");
+            }
         }
 
         /// @brief 获取空闲列表的下一个对象，release不会检测是否非空因此你需要自己保证非空，建议try_next
@@ -256,7 +272,7 @@ namespace alib5::ecs::detail{
 
             i_index = index;
 
-            T & ret = data[index];
+            T & ret = (*this)[index];
             if constexpr(CanReset<T,Ts...>){
                 // 这一块暂时按下不表，后面需要的时候再适配看看
                 // static_assert(IsResetableComponent<T,Ts...>,"Reset function must have the same argument list with the constructor!");
@@ -274,6 +290,9 @@ namespace alib5::ecs::detail{
             if(available_bits.get(index)){
                 panic_debug(true,"Double free a storage!");
                 return;
+            }
+            if constexpr(NeedDataCleanup<T>){
+                (*this)[index].d_cleanup();
             }
             available_bits.set(index);
             free_elements.push_back(index);

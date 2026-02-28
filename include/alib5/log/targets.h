@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 内置的输出对象，目前支持控制台输出，文件输出，以及多文件输出
  * @version 0.1
- * @date 2026/02/03
+ * @date 2026/02/28
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -216,7 +216,7 @@ namespace alib5{
                 clock_gettime(time_clock_source,&tm);
                 // 大小超了
                 bool opt = config.rotate_size && (bytes_written >= config.rotate_size);
-                defer{
+                $defer{
                     if(opt){
                         last_expire = tm;
                     }

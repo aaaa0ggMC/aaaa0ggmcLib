@@ -1,7 +1,7 @@
 /**@file autil.h
 * @brief 工具库，提供实用函数
 * @author aaaa0ggmc
-* @date 2026/02/11
+* @date 2026/02/28
 * @version 5.0
 * @copyright Copyright(c) 2026
 */
@@ -36,7 +36,7 @@
 #define ALIB5_DEFAULT_MEMORY_RESOURCE std::pmr::get_default_resource()
 #define CAT(a,b) a##b
 #define CAT_2(a,b) CAT(a,b)
-#define defer alib5::defer_t CAT_2(defer,__COUNTER__) = [&] noexcept  
+#define $defer alib5::defer_t CAT_2(defer,__COUNTER__) = [&] noexcept  
 #define MAY_INVOKE(N) if constexpr(conf_lib_error_invoke_level >= (N))
 
 /// 提供对view和其他类型之间的尝试性赋值
