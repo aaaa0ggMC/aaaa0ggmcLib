@@ -1,13 +1,14 @@
 /**@file autil.h
 * @brief 时钟库，提供实用计时类包装
 * @author aaaa0ggmc
-* @date 2026/02/11
+* @date 2026/03/01
 * @version 5.0
 * @copyright Copyright(c) 2026
 */
 #ifndef ALIB5_ACLOCK
 #define ALIB5_ACLOCK
 #include <alib5/autil.h>
+#include <alib5/aco.h>
 #include <chrono>
 #include <thread>
 
@@ -149,6 +150,10 @@ namespace alib5{
             if(m_clock)m_recorded_time = m_clock->get_all();
         }
 
+        inline bool until(){
+            return test();
+        }
+
         inline void set_clock(Clock& clock){m_clock = &clock;}
     };
 
@@ -171,6 +176,36 @@ namespace alib5{
                     // 只有剩余时间较长时才真正 sleep，避免调度开销导致不准
                     std::this_thread::sleep_for(std::chrono::microseconds(static_cast<long long>(remaining * 500)));
                 }
+            }
+        }
+
+        inline bool until(){
+            return trig.test();
+        }
+
+        template<class T>
+        inline void wait(T && fn){
+            // 如果没到时间，则进行补偿性睡眠
+            if(desire_fps <= 0)return;
+            while(!trig.test()){
+                if constexpr(requires{fn(0.1);}){
+                    double remaining = trig.duration - (clk.get_all() - trig.m_recorded_time);
+                    fn(remaining);
+                }else{
+                    fn();
+                }
+            }
+        }
+
+        template<class T>
+        inline void wait(co::Task<T> & task){
+            // 如果没到时间，则进行补偿性睡眠
+            if(desire_fps <= 0)return;
+            while(!trig.test()){
+                if(!task.should_next()) [[unlikely]] {
+                    wait();
+                    return;
+                }else task.next();
             }
         }
 
