@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 提供简单的和协程相关的支持
  * @version 5.0
- * @date 2026/03/01
+ * @date 2026/03/02
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -29,7 +29,26 @@ namespace alib5::co{
         std::optional<iterator> current;
         bool inited { false };
 
+        void reset(){
+            current.reset();
+            inited = false;
+        }
+
+        Task(Task&& other) noexcept 
+        :handle(std::move(other.handle)){
+            panic_if(inited, "Coroutine has inited!");
+            panic_if(other.inited, "Other's coroutine has inited!");
+            reset();
+            inited = other.inited;
+            other.inited = false;
+            other.current.reset();
+        }
+
+        Task(gen_t && t)
+        :handle(std::move(t)){}
+
         template<class Fn,class... Args> Task(Fn && t,Args&&... args)
+        requires (!std::is_same_v<std::remove_cvref_t<Fn>, Task>)
         :handle(std::forward<Fn>(t)(std::forward<Args>(args)...)){}
 
         bool should_next(){
@@ -51,6 +70,19 @@ namespace alib5::co{
     // 对于generator
     template<class Fn, class... Args>
     Task(Fn&&, Args&&...) -> Task<std::ranges::range_value_t<std::remove_cvref_t<decltype(std::declval<Fn>()(std::declval<Args>()...))>>>;
+    template<class T>
+    Task(std::generator<T>&&) -> Task<T>;
+    template<class T>
+    Task(std::generator<T>&) -> Task<T>;
+
+
+    template<class T>
+    concept IsTask = requires(T && t){
+        Task(t);
+    } || requires(std::remove_cvref_t<T>& t) {
+        { t.next() } -> std::same_as<void>;
+        { t.should_next() } -> std::convertible_to<bool>;
+    };
 
     struct Signal{
     private:
@@ -135,11 +167,67 @@ namespace alib5::co{
         }
     };
 
+    template<IsTask... Ts> auto combine_tasks(Ts&&... itasks){
+        auto nice_forward = []<class T>(T && t) -> auto {
+            return Task(std::forward<T>(t));
+        };
+        return Task([](auto tup) mutable -> std::generator<int>{
+            bool failed = true;
+            while(true){
+                failed = true;
+                std::apply([&failed](auto&... sub_tasks){
+                    auto execute = [&failed](auto& st){
+                        if(st.should_next()) {
+                            st.next();
+                            failed = false;
+                        }
+                    };
+                    (execute(sub_tasks), ...);
+                }, tup);
+                panic_if(failed,"All of the tasks are expired!");
+                co_yield 0;
+            }
+        },std::make_tuple(nice_forward(std::forward<Ts>(itasks))...));
+    }
+
     template<class T,CanUntil Until> void wait_until(Task<T> & t,Until & ut){
         while(!ut.until()){
             panic_if(!t.should_next(), "Task expired!");
             t.next();
         }
+    }
+
+    template<class... Vs>
+    struct Race{
+        std::tuple<Vs...> values;
+        unsigned int winner;
+
+        Race(Vs... races)
+        :values(std::forward<Vs>(races)...){}        
+    
+        bool until(){
+            int i = 0;
+            return std::apply([&](auto&... v){
+                return ((v.until() ? (winner = i, true) : (++i, false)) || ...);
+            }, values);
+        }
+    };
+
+    template<class... Ts>
+    Race(Ts&&...) -> Race<Ts...>;
+
+    template<class T,CanUntil... Ts>
+    size_t any(Task<T> & task,Ts&&... ts){
+        Race race(std::forward<Ts>(ts)...);
+        while(true){
+            if(race.until())break;
+            if(task.should_next()){
+                task.next();
+            }else{
+                panic_if(!task.should_next(),"Task expired!");
+            }
+        }
+        return race.winner;
     }
 }
 

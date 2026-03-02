@@ -1,7 +1,7 @@
 /**@file autil.h
 * @brief 时钟库，提供实用计时类包装
 * @author aaaa0ggmc
-* @date 2026/03/01
+* @date 2026/03/02
 * @version 5.0
 * @copyright Copyright(c) 2026
 */
@@ -217,6 +217,86 @@ namespace alib5{
             trig.reset();
         }
     };
+
+    struct ALIB5_API Timer{
+    private:
+        std::chrono::steady_clock::time_point time_point;
+        std::chrono::nanoseconds time;
+        bool waiting { false };
+    public:
+
+        Timer(std::chrono::nanoseconds nanos = std::chrono::nanoseconds(0))
+        :time(nanos){}
+        Timer(double milliseconds)
+        :time(std::chrono::nanoseconds((size_t)(milliseconds * 1'000'000))){}
+
+        void set(std::chrono::nanoseconds nanos){time = nanos;}
+        void set(double milli){time = std::chrono::nanoseconds((size_t)(milli * 1'000'000));}
+        auto get(){return time;}
+
+        bool trigger(bool resetIfTriggered = true){
+            if(!waiting){
+                waiting = true;
+                time_point = std::chrono::steady_clock::now();
+            }
+            auto diff = std::chrono::steady_clock::now() - time_point;
+            if(diff > time){
+                if(resetIfTriggered)waiting = false;
+                return true;
+            }
+            return false;
+        }
+
+        bool until(){
+            return trigger(true);
+        }
+
+        void wait(){
+            if(waiting) std::this_thread::sleep_until(time_point + time);
+            else std::this_thread::sleep_for(time);
+            waiting = false;
+        }
+
+        template<class T>
+        inline void wait(T && fn){
+            while(!trigger()){
+                fn();
+            }
+        }
+
+        template<class T>
+        inline void wait(co::Task<T> & task){
+            // 如果没到时间，则进行补偿性睡眠
+            while(!trigger()){
+                if(!task.should_next()) [[unlikely]] {
+                    wait();
+                    return;
+                }else task.next();
+            }
+        }
+    };
+
+    std::generator<int> inline nap(std::chrono::nanoseconds nap_time){
+        while(true){
+            std::this_thread::sleep_for(nap_time);
+            co_yield 0;
+        }
+    }
+
+    std::generator<int> inline nap(double millisecs){
+        auto t = std::chrono::nanoseconds((size_t)(millisecs * 1'000'000));
+        while(true){
+            std::this_thread::sleep_for(t);
+            co_yield 0;
+        }
+    }
+
+    std::generator<int> inline nap0(){
+        while(true){
+            std::this_thread::sleep_for(std::chrono::seconds(0));
+            co_yield 0;
+        }
+    }
 }
 
 #endif
