@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 提供简单的和协程相关的支持
  * @version 5.0
- * @date 2026/03/02
+ * @date 2026/03/03
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -14,6 +14,8 @@
 #include <alib5/adebug.h>
 #include <generator>
 #include <atomic>
+#include <thread>
+#include <memory>
 
 namespace alib5::co{
     template<class T>
@@ -87,6 +89,7 @@ namespace alib5::co{
     struct Signal{
     private:
         std::atomic<bool> m_state {false};
+        friend struct CancelableWaitGroup;
     public:
         Signal() = default;
         Signal(const Signal&) = delete;
@@ -190,6 +193,27 @@ namespace alib5::co{
         },std::make_tuple(nice_forward(std::forward<Ts>(itasks))...));
     }
 
+    struct CancelableWaitGroup {
+        Signal signal;
+        WaitGroup wg;
+
+        void cancel(){
+            signal.fire();
+        }
+        bool should_cancel() const { return signal.ready(); }
+
+        bool until(){ return wg.until(); }
+        bool ready(){ return wg.ready(); }
+        bool reset(){
+            panic_if(!wg.ready(),"There's task still running!");
+            signal.m_state.store(false);
+            return wg.reset();
+        }
+        auto make_guard(){
+            return wg.make_guard();
+        }
+    };
+
     template<class T,CanUntil Until> void wait_until(Task<T> & t,Until & ut){
         while(!ut.until()){
             panic_if(!t.should_next(), "Task expired!");
@@ -197,12 +221,62 @@ namespace alib5::co{
         }
     }
 
+    struct RepetitiveWork{
+        std::shared_ptr<std::atomic<bool>> done;
+
+        template<class Fn>
+        RepetitiveWork(Fn && f,CancelableWaitGroup & cwg)
+        :done(std::make_shared<std::atomic<bool>>()){
+            done->store(false);
+            std::thread(
+            [guard = cwg.make_guard(),fn = std::forward<Fn>(f),&cwg, finished = done]
+            {
+                while(!cwg.should_cancel()){
+                    fn();
+                }
+                finished->store(true);
+                finished->notify_all();
+            }).detach();
+        }
+
+        bool until(){
+            return done->load();
+        }
+
+        void wait(){
+            done->wait(false);
+        }
+    };
+
+    struct ThreadingWork{
+        std::shared_ptr<std::atomic<bool>> done;
+
+        template<class Fn>
+        ThreadingWork(Fn && f)
+        :done(std::make_shared<std::atomic<bool>>()){
+            done->store(false);
+            std::thread([fn = std::forward<Fn>(f), finished = done] {
+                fn();
+                finished->store(true);
+                finished->notify_all();
+            }).detach();
+        }
+
+        bool until(){
+            return done->load();
+        }
+
+        void wait(){
+            done->wait(false);
+        }
+    };
+
     template<class... Vs>
     struct Race{
         std::tuple<Vs...> values;
         unsigned int winner;
 
-        Race(Vs... races)
+        Race(Vs&&... races)
         :values(std::forward<Vs>(races)...){}        
     
         bool until(){

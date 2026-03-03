@@ -1,7 +1,7 @@
 /**@file autil.h
 * @brief 时钟库，提供实用计时类包装
 * @author aaaa0ggmc
-* @date 2026/03/02
+* @date 2026/03/03
 * @version 5.0
 * @copyright Copyright(c) 2026
 */
@@ -293,7 +293,7 @@ namespace alib5{
 
     std::generator<int> inline nap0(){
         while(true){
-            std::this_thread::sleep_for(std::chrono::seconds(0));
+            std::this_thread::yield();
             co_yield 0;
         }
     }
