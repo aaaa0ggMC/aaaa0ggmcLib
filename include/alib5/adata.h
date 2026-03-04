@@ -1,7 +1,7 @@
 /**@file adata.h
 * @brief 简单的数据结构
 * @author aaaa0ggmc
-* @date 2026/02/07
+* @date 2026/03/04
 * @version 5.0
 * @copyright Copyright(c) 2026 
 */
@@ -11,3 +11,4 @@
 #include <alib5/data/validator.h>
 // 一些预制的policy
 #include <alib5/data/data_json.h>
+#include <alib5/data/data_toml.h>
