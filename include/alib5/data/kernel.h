@@ -9,6 +9,7 @@
 namespace alib5{
     /// 数组访问自动扩展
     static constexpr size_t conf_array_auto_expand = 4;
+    static constexpr double conf_value_compare_epsilon = 1e-12;
 
     template<class T> concept IsNodeValue = 
         std::is_integral_v<std::decay_t<T>> || std::is_floating_point_v<std::decay_t<T>> ||
@@ -33,6 +34,14 @@ namespace alib5{
     template<class T,class Data> concept IsPruneFn = requires(T&t,const Data & dest){
         { t(dest) } -> std::convertible_to<bool>;
     };
+    /// 比较的模糊度逐渐扩大
+    enum class CompareStrategy : int64_t {
+        Strict,     // 严格限制Value类型与数值
+        BoolStrict, // Value的 INT和DOUBLE也是可以比较一下的,对Bool只支持等于0或者1
+        Lesser,     // 对Bool的转换模拟C/C++
+        Fuzzy       // Value的 INT STRING等等啥的也是可以比较的,只要数值相等就行
+    };
+
 
     /// 默认值
     namespace data{
@@ -98,7 +107,7 @@ namespace alib5{
         }
         /// 初始化数据-通用版本
         template<class T> requires(!IsStringLike<std::decay_t<T>> && !std::is_same_v<std::decay_t<T>, Value>)
-        Value(const T && d,std::pmr::memory_resource * __a = ALIB5_DEFAULT_MEMORY_RESOURCE):data(__a){
+        Value(T && d,std::pmr::memory_resource * __a = ALIB5_DEFAULT_MEMORY_RESOURCE):data(__a){
             // 无非只是多计算一次
             type = STRING;
             data_dirt = true;
@@ -122,6 +131,11 @@ namespace alib5{
         template<class T> auto expect() const;
         /// 转换类型,不更改内部类型
         template<class T> auto to() const;
+
+        static bool equals(const Value & left,const Value & right,CompareStrategy strategy = CompareStrategy::Strict);
+        bool equals(const Value & b,CompareStrategy strategy = CompareStrategy::Strict) const {
+            return equals(*this,b,strategy);
+        }  
     };
 
     /// 节点
@@ -208,10 +222,11 @@ namespace alib5{
                 > cont;
 
                 struct Proxy{
-                    const std::pmr::string & first;
-                    reference second;
+                    const std::pmr::string & _first;
+                    reference _second;
 
-                    auto* operator->(){return &second;}
+                    auto& first() const { return _first; }
+                    reference second() const { return _second; }
                 };
 
 
@@ -221,15 +236,17 @@ namespace alib5{
                 {}
 
 
+                auto& first() const { return it->first; };
+                auto& second() const { return cont.data[it->second]; }
 
-                auto operator*(){
+                auto operator*() const {
                     return Proxy{it->first,cont.data[it->second]};
                 }
                 auto operator++(){ return ++it; }
                 auto operator++(int){ return it++; }
                 bool operator==(const ObjectIterator& other) const { return it == other.it; }
                 bool operator!=(const ObjectIterator& other) const { return it != other.it; }
-                auto operator->(){ return Proxy{it->first,cont.data[it->second]}; } // 这里也符合end()->会panic的性质
+                auto operator->() const { return Proxy{it->first,cont.data[it->second]}; } // 这里也符合end()->会panic的性质
             };
 
             using iterator = ObjectIterator<false>;
@@ -414,6 +431,11 @@ namespace alib5{
         inline bool is_object() const { return get_type() == TObject; }
         inline bool is_array() const { return get_type() == TArray; }
         inline bool is_value() const { return get_type() == TValue; }
+        /// 相等判断
+        static bool equals(const AData & left,const AData & right,CompareStrategy strategy = CompareStrategy::Strict);
+        bool equals(const AData & b,CompareStrategy strategy = CompareStrategy::Strict) const {
+            return equals(*this,b,strategy);
+        }
 
         Value & value(){return __get_value<Value>();}
         Object & object(){return __get_value<Object>();}
@@ -685,7 +707,8 @@ namespace alib5{
         }
     }
 
-    template<class T,bool invoke_err> inline auto& Value::transform(){
+    template<class TP,bool invoke_err> inline auto& Value::transform(){
+        using T = std::remove_const_t<TP>;
         auto generator = [this]<class T1,class T2,class T3,Type t1,Type t2,Type t3>(T1 & v1,T2 & v2,T3 & v3) -> auto& {
             [[likely]] if(type == t1){
             }else if(type == t2){
@@ -826,14 +849,14 @@ namespace alib5{
                     
                     object_nexts.clear();
                     for(auto mit : sobj){
-                        auto it = dobj.find(mit.first);
+                        auto it = dobj.find(mit.first());
                         if(it != dobj.end()){
-                            object_nexts.emplace_back(it.it->second, &mit.second);
+                            object_nexts.emplace_back(it.it->second, &mit.second());
                         }else{
                             if constexpr (is_rvalue){
-                                dobj[mit.first] = std::move(mit.second);
+                                dobj[mit.first()] = std::move(mit.second());
                             }else{
-                                dobj[mit.first] = mit.second;
+                                dobj[mit.first()] = mit.second();
                             }
                         }
                     }
@@ -892,27 +915,27 @@ namespace alib5{
                     }
 
                     for(auto mit : dobj){
-                        auto it = sobj.find(mit.first);
+                        auto it = sobj.find(mit.first());
                         if(it == sobj.end()){
                             if(!added_or_modified && !src_lack_of)return true;
                             ret = true;
-                            if(src_lack_of)(*cdel)[mit.first] = mit.second;
+                            if(src_lack_of)(*cdel)[mit.first()] = mit.second();
                         }
                     }
 
                     for(auto mit : sobj){
-                        auto it = dobj.find(mit.first);
+                        auto it = dobj.find(mit.first());
                         if(it != dobj.end()){
                             jobs.emplace_back(
-                                &(mit.second),
-                                &(*it).second,
-                                cadd ? &(*cadd)[mit.first] : nullptr,
-                                cdel ? &(*cdel)[mit.first] : nullptr
+                                &mit.second(),
+                                &it.second(),
+                                cadd ? &(*cadd)[mit.first()] : nullptr,
+                                cdel ? &(*cdel)[mit.first()] : nullptr
                             );
                         }else{
                             if(!added_or_modified && !src_lack_of)return true;
                             ret = true;
-                            if(added_or_modified)(*cadd)[mit.first] = mit.second;
+                            if(added_or_modified)(*cadd)[mit.first()] = mit.second();
                         }
                     }
                     
@@ -954,13 +977,13 @@ namespace alib5{
                     size_t pop_p = frames.size() - 1;
                     // 遍历深入检测,对于object中的object进行增加
                     for(auto mit : d.current->object()){
-                        if(fn(mit.second)){
-                            key_rms.emplace_back(mit.first);
+                        if(fn(mit.second())){
+                            key_rms.emplace_back(mit.first());
                         }else{
                             // 如果产生了push,那么obj一定最后非空
                             // 所以下面的fn(*d.current)正常情况一定返回false?
                             // 算了,还是依赖pop_p吧
-                            if(!d.expanded)frames.emplace_back(&mit.second);
+                            if(!d.expanded)frames.emplace_back(&mit.second());
                         }
                     }
                     for(auto k : key_rms){

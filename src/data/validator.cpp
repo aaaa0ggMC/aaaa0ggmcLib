@@ -576,8 +576,8 @@ std::pmr::string Validator::from_adata(const AData & doc){
                 for(auto proxy : d->object()){
                     auto next_vi = visit_tree;
                     next_vi += ".";
-                    next_vi += proxy.first;
-                    nlayer.emplace_back(&proxy.second,&current->children.emplace(proxy.first,allocator).first->second,
+                    next_vi += proxy.first();
+                    nlayer.emplace_back(&proxy.second(),&current->children.emplace(proxy.first(),allocator).first->second,
                         std::move(next_vi)
                     );
                 }

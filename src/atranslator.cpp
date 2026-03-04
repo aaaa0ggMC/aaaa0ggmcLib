@@ -101,7 +101,7 @@ std::string_view Translator::get_key_value_dots(std::string_view key) const {
     auto it = translations.object().find(current_language);
     if(it == translations.object().end())
         return key;
-    const AData * current = &(*it).second;
+    const AData * current = &it.second();
 
     auto vals = str::split(key,'.');
     for(size_t i = 0;i < vals.size();++i){
@@ -124,7 +124,7 @@ std::string_view Translator::get_key_value_dots(std::string_view key) const {
                         continue;
                     }else return key; // 这个也是没找到
                 }
-                current = &(*itt).second;
+                current = &itt.second();
                 break;
             }
         }
@@ -161,7 +161,7 @@ std::optional<FlattenTranslator> Translator::flatten_dots(std::string_view key,s
     std::pmr::string loc (res);
     bool first = true;
 
-    frames.emplace_back(&(*it).second,0);
+    frames.emplace_back(&it.second(),0);
 
     auto pop_visi = [&]{
         if(seps.size()){
@@ -204,7 +204,7 @@ std::optional<FlattenTranslator> Translator::flatten_dots(std::string_view key,s
             auto & obj = d.node->object();
             frames.emplace_back(nullptr);
             for(auto p : obj){
-                frames.emplace_back(&p.second,d.depth + 1,-1,p.first);
+                frames.emplace_back(&p.second(),d.depth + 1,-1,p.first());
             }
         }else if(d.node->is_null())continue;
         else{
@@ -259,7 +259,7 @@ std::optional<FlattenTranslator> Translator::flatten_jsonp(std::string_view key,
     std::pmr::string loc (res);
     bool first = true;
 
-    frames.emplace_back(&(*it).second);
+    frames.emplace_back(&it.second());
 
     auto pop_visi = [&]{
         if(seps.size()){
@@ -306,7 +306,7 @@ std::optional<FlattenTranslator> Translator::flatten_jsonp(std::string_view key,
             auto & obj = d.node->object();
             frames.emplace_back(nullptr);
             for(auto p : obj){
-                frames.emplace_back(&p.second,-1,p.first);
+                frames.emplace_back(&p.second(),-1,p.first());
             }
         }else if(d.node->is_null())continue;
         else{

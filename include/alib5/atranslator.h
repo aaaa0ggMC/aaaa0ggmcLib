@@ -1,7 +1,7 @@
 /**@file atranslator.h
 * @brief 简单的翻译器
 * @author aaaa0ggmc
-* @date 2026/02/07
+* @date 2026/03/04
 * @version 5.0
 * @copyright Copyright(c) 2026 
 */
@@ -178,7 +178,7 @@ namespace alib5{
             auto it = translations.object().find(current_language);
             if(it == translations.object().end())
                 return key;
-            const AData & current = (*it).second;
+            const AData & current = it.second();
             auto ptr = current.jump_ptr(key);
             if(ptr && ptr->is_value())return ptr->value().to<std::string_view>();
             else return key;

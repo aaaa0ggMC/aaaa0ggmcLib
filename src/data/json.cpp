@@ -263,11 +263,11 @@ JSON::DumpResult JSON::__internal_dump(__dump_fn fn,void * p, const dadata_t & r
                 frames.clear();
                 for(auto proxy : current.data->object()){
                     /// 过滤节点
-                    if(cfg.filter && cfg.filter(proxy.first,proxy.second) == JSONConfig::FilterOp::Discard)
+                    if(cfg.filter && cfg.filter(proxy.first(),proxy.second()) == JSONConfig::FilterOp::Discard)
                         continue;
                     frames.emplace_back(ObjFrame{
-                        proxy.first,
-                        &proxy.second
+                        proxy.first(),
+                        &proxy.second()
                     });
                 }
                 std::sort(frames.begin(),frames.end(),[this](const ObjFrame & a,const ObjFrame & b){
@@ -290,13 +290,13 @@ JSON::DumpResult JSON::__internal_dump(__dump_fn fn,void * p, const dadata_t & r
                 for(auto proxy : current.data->object()){
                     /// 过滤节点,这个地方是一定会变化的,因此不用管
                     /// 所以它并不是最后一个
-                    if(cfg.filter && cfg.filter(proxy.first,proxy.second) == JSONConfig::FilterOp::Discard){
+                    if(cfg.filter && cfg.filter(proxy.first(),proxy.second()) == JSONConfig::FilterOp::Discard){
                         continue;
                     }
                     queue.push_back({
-                        &proxy.second,
+                        &proxy.second(),
                         current.depth + 1,
-                        proxy.first,
+                        proxy.first(),
                         -1,
                         (index == sz)
                     });

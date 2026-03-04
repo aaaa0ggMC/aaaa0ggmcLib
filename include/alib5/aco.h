@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 提供简单的和协程相关的支持
  * @version 5.0
- * @date 2026/03/03
+ * @date 2026/03/04
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -16,6 +16,7 @@
 #include <atomic>
 #include <thread>
 #include <memory>
+#include <future>
 
 namespace alib5::co{
     template<class T>
@@ -77,7 +78,6 @@ namespace alib5::co{
     template<class T>
     Task(std::generator<T>&) -> Task<T>;
 
-
     template<class T>
     concept IsTask = requires(T && t){
         Task(t);
@@ -89,7 +89,6 @@ namespace alib5::co{
     struct Signal{
     private:
         std::atomic<bool> m_state {false};
-        friend struct CancelableWaitGroup;
     public:
         Signal() = default;
         Signal(const Signal&) = delete;
@@ -193,26 +192,38 @@ namespace alib5::co{
         },std::make_tuple(nice_forward(std::forward<Ts>(itasks))...));
     }
 
-    struct CancelableWaitGroup {
-        Signal signal;
-        WaitGroup wg;
+    template<class U>
+    struct OnErr{
+        U task;
 
-        void cancel(){
-            signal.fire();
-        }
-        bool should_cancel() const { return signal.ready(); }
-
-        bool until(){ return wg.until(); }
-        bool ready(){ return wg.ready(); }
-        bool reset(){
-            panic_if(!wg.ready(),"There's task still running!");
-            signal.m_state.store(false);
-            return wg.reset();
-        }
-        auto make_guard(){
-            return wg.make_guard();
-        }
+        template<class T>
+        OnErr(T && v):task(Task(std::forward<T>(v))){}
     };
+    template<class T>
+    OnErr(T && v) -> OnErr<decltype(Task(std::forward<T>(v)))>;
+
+    template<IsTask L,IsTask... Ts> auto combine_tasks(OnErr<L> fallback,Ts&&... itasks){
+        auto nice_forward = []<class T>(T && t) -> auto {
+            return Task(std::forward<T>(t));
+        };
+        return Task([fb = std::move(fallback.task)](auto tup) mutable -> std::generator<int>{
+            bool failed = true;
+            while(true){
+                failed = true;
+                std::apply([&failed](auto&... sub_tasks){
+                    auto execute = [&failed](auto& st){
+                        if(st.should_next()) {
+                            st.next();
+                            failed = false;
+                        }
+                    };
+                    (execute(sub_tasks), ...);
+                }, tup);
+                if(failed)fb.next();
+                co_yield 0;
+            }
+        },std::make_tuple(nice_forward(std::forward<Ts>(itasks))...));
+    }
 
     template<class T,CanUntil Until> void wait_until(Task<T> & t,Until & ut){
         while(!ut.until()){
@@ -223,24 +234,25 @@ namespace alib5::co{
 
     struct RepetitiveWork{
         std::shared_ptr<std::atomic<bool>> done;
+        std::jthread th;
 
         template<class Fn>
-        RepetitiveWork(Fn && f,CancelableWaitGroup & cwg)
-        :done(std::make_shared<std::atomic<bool>>()){
-            done->store(false);
-            std::thread(
-            [guard = cwg.make_guard(),fn = std::forward<Fn>(f),&cwg, finished = done]
-            {
-                while(!cwg.should_cancel()){
+        RepetitiveWork(Fn&& f) 
+        :done(std::make_shared<std::atomic<bool>>(false)){
+            th = std::jthread([fn = std::forward<Fn>(f), d = done](std::stop_token st){
+                while(!st.stop_requested()){
                     fn();
                 }
-                finished->store(true);
-                finished->notify_all();
-            }).detach();
+                d->store(true, std::memory_order_release);
+            });
         }
 
-        bool until(){
-            return done->load();
+        bool until() const {
+            return done->load(std::memory_order_acquire);
+        }
+
+        void cancel() {
+            th.request_stop(); 
         }
 
         void wait(){
@@ -249,25 +261,20 @@ namespace alib5::co{
     };
 
     struct ThreadingWork{
-        std::shared_ptr<std::atomic<bool>> done;
+        std::future<void> fut;
 
         template<class Fn>
-        ThreadingWork(Fn && f)
-        :done(std::make_shared<std::atomic<bool>>()){
-            done->store(false);
-            std::thread([fn = std::forward<Fn>(f), finished = done] {
-                fn();
-                finished->store(true);
-                finished->notify_all();
-            }).detach();
+        ThreadingWork(Fn&& f){
+            fut = std::async(std::launch::async, std::forward<Fn>(f));
         }
 
-        bool until(){
-            return done->load();
+        bool until() const {
+            if(!fut.valid()) return true;
+            return fut.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
         }
 
         void wait(){
-            done->wait(false);
+            if (fut.valid()) fut.wait();
         }
     };
 

@@ -126,3 +126,148 @@ const AData * AData::jump_ptr(std::string_view path,bool err) const{
     }
     return current;
 }
+
+
+bool Value::equals(const Value & left,const Value & right,CompareStrategy st){
+    auto float_equal = [](double a, double b){
+        if (a == b) return true;
+        double diff = std::abs(a - b);
+        if(diff < conf_value_compare_epsilon)return true;
+        
+        return diff <= ( (std::abs(a) < std::abs(b) ? std::abs(b) : std::abs(a)) 
+                        * std::numeric_limits<double>::epsilon() );
+    };
+    
+    auto lt = left.get_type();
+    auto rt = right.get_type();
+    if(lt == rt){
+        switch(lt){
+        case Type::BOOL:
+            return left.boolean == right.boolean;
+        case Type::FLOATING:
+            if(st == CompareStrategy::Strict){
+                return left.floating == right.floating; 
+            }
+            // 只有非Strict模式才允许Epsilon容错
+            return float_equal(left.floating, right.floating);
+        case Type::INT:
+            return left.INT == right.INT;
+        case Type::STRING:
+            return left.data == right.data;
+        }
+        panic_debug(true,"aaaa0ggmc,你这里忘记处理其他类型了!!!同时注意下面的代码也要同步你的类型更改");
+    }
+    if(st == CompareStrategy::Strict)return false;
+    // 现在是Lesser : 可以比较INT和DOUBLE啥的
+    auto is_numeric = [](Type t){
+        return t == Type::FLOATING || t == Type::INT || t == Type::BOOL;
+    };
+    // 在这里left type != right type绝对成立
+    if(is_numeric(lt) && is_numeric(rt)){
+        // 在这里,二者都不是string
+        if(lt == Type::BOOL || rt == Type::BOOL){
+            if(st == CompareStrategy::BoolStrict){
+                return float_equal(left.to<double>(),right.to<double>());
+            }else {
+                return left.to<bool>() == right.to<bool>();
+            }
+        }
+        // 这样下面就没有bool干扰了
+        // 所以目前只有DOUBLE和INT了
+        /// @note 这里需要同步更改
+        // 一定有一方是INT,一方是DOUBLE
+        return right.to<double>() == left.to<double>();
+    }
+    if(st == CompareStrategy::BoolStrict || st == CompareStrategy::Lesser)return false;
+    // 一定存在一方是string
+    auto& plt = (lt == Type::STRING)? right : left;
+    auto& prt = (lt == Type::STRING)? left : right;
+    lt = plt.get_type();
+    rt = prt.get_type();
+    
+    if(lt == Type::FLOATING){
+        // rt为STRING
+        auto db = prt.expect<double>();
+        // 转换失败
+        if(!db.second)return false;
+        return float_equal(db.first,plt.floating);
+    }else if(lt == Type::INT){
+        auto db = prt.expect<double>();
+        // 转换失败
+        if(!db.second)return false;
+        return float_equal(db.first,(double)plt.integer);
+    }else if(lt == Type::BOOL){
+        std::string_view s = prt.data;
+        // std::cout << "PRT:" << s << std::endl;
+        if(plt.boolean == true){
+            if(s == "true" || s == "TRUE" || s == "1" || s == "yes" || s == "YES"){
+                return true;
+            }
+            return false;
+        }else{
+            if(s == "false" || s == "FALSE" || s == "0" || s == "no" || s == "NO"){
+                return true;
+            }   
+            return false;
+        }
+    }
+    return false;
+}
+
+bool AData::equals(const AData & left,const AData & right,CompareStrategy st){
+    struct Frame{
+        const AData* left;
+        const AData* right;
+    };
+    std::deque<Frame> frames;
+    frames.emplace_back(&left,&right);
+
+    while(!frames.empty()){
+        Frame f = frames.back();
+        frames.pop_back();
+
+        // 大类型都不相等,别想了
+        auto lt = f.left->get_type();
+        auto rt = f.right->get_type();
+        if(lt != rt){
+            return false;
+        }
+        switch(lt){
+        case Type::TValue:
+            // 转发数值
+            if(!f.left->value().equals(f.right->value(),st))return false;
+            break;
+        case Type::TArray:{
+            auto & la = f.left->array();
+            auto & ra = f.right->array();
+
+            // 数组长度
+            if(la.size() != ra.size())return false;
+            // 对于每个数据元素实施便利
+            for(size_t i = 0;i < la.size();++i){
+                frames.emplace_back(&la[i],&ra[i]);
+            }
+            break;
+        }
+        case Type::TObject:{
+            auto & lo = f.left->object();
+            auto & ro = f.right->object();
+
+            if(lo.size() != ro.size())return false;
+            // 每个成员进行遍历
+            for(auto it : lo){
+                auto proxy = ro.find(it.first());
+                if(proxy == ro.end()){
+                    return false;
+                }
+                // 加入新的
+                frames.emplace_back(&it.second(),&proxy.second());
+            }
+            break;
+        }
+        case Type::TNull:
+            break;
+        }
+    }
+    return true;
+}
