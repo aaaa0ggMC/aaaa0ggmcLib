@@ -135,7 +135,7 @@ namespace alib5{
         static bool equals(const Value & left,const Value & right,CompareStrategy strategy = CompareStrategy::Strict);
         bool equals(const Value & b,CompareStrategy strategy = CompareStrategy::Strict) const {
             return equals(*this,b,strategy);
-        }  
+        }
     };
 
     /// 节点
