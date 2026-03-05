@@ -600,7 +600,8 @@ namespace alib5{
             
             if(val.allocator == this->allocator){
                 /// 复制版本
-                data = clone_data(val.data, allocator);
+                decltype(data) safe_d = clone_data(val.data, allocator);
+                data = std::move(safe_d);
             }else{
                 this->data = clone_data(val.data, allocator);
             }
