@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 线性存储类，目前使用vector，后期可以变成sparse_set啥的
  * @version 0.1
- * @date 2026/02/28
+ * @date 2026/03/05
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -206,6 +206,42 @@ namespace alib5::ecs::detail{
         ):data(__data),free_elements(__free_list){
             data.reserve(reserve_size);
             available_bits.ensure(reserve_size);
+        }
+
+        inline LinearStorage(const LinearStorage& other, std::pmr::memory_resource* __a)
+        :data(other.data, __a)
+        ,free_elements(other.free_elements, __a)
+        ,available_bits(other.available_bits)
+        {}
+
+        inline LinearStorage(LinearStorage&& other) noexcept
+        :data(std::move(other.data))
+        ,free_elements(std::move(other.free_elements))
+        ,available_bits(std::move(other.available_bits)) 
+        {}
+
+        inline LinearStorage(LinearStorage&& other, std::pmr::memory_resource* __a)
+        :data(std::move(other.data), __a)
+        ,free_elements(std::move(other.free_elements), __a)
+        ,available_bits(std::move(other.available_bits))
+        {}
+
+        LinearStorage& operator=(const LinearStorage& other){
+            if (this == &other) [[unlikely]] return *this;
+            
+            data = other.data;
+            free_elements = other.free_elements;
+            available_bits = other.available_bits;
+            return *this;
+        }
+
+        LinearStorage& operator=(LinearStorage&& other) noexcept{
+            if (this == &other) [[unlikely]] return *this;
+            
+            data = std::move(other.data);
+            free_elements = std::move(other.free_elements);
+            available_bits = std::move(other.available_bits);
+            return *this;
         }
         
         /// @brief 进行遍历

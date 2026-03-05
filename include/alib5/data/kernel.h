@@ -121,6 +121,49 @@ namespace alib5{
             data_dirt = false;
             integer = 0;
         }
+        Value(const Value& other, std::pmr::memory_resource* a) 
+        :data(other.data, a)
+        ,data_dirt(other.data_dirt)
+        ,type(other.type){
+            this->integer = other.integer; 
+        }
+        Value(Value&& other) noexcept 
+        :data(std::move(other.data))
+        ,data_dirt(other.data_dirt)
+        ,type(other.type)
+        ,integer(other.integer){
+            other.data_dirt = true;
+            other.data.clear();
+        }
+        Value(Value&& other, std::pmr::memory_resource* a) 
+        :data(std::move(other.data), a)
+        ,data_dirt(other.data_dirt)
+        ,type(other.type){
+            this->integer = other.integer;
+            // 说明是move
+            if(a == other.data.get_allocator()){
+                other.data_dirt = true;
+                other.data.clear();
+            }
+        }
+
+        Value& operator=(const Value& other) {
+            if(this == &other) [[unlikely]] return *this;
+            data = other.data; 
+            data_dirt = other.data_dirt;
+            type = other.type;
+            integer = other.integer;
+            return *this;
+        }
+
+        Value& operator=(Value&& other) noexcept {
+            if(this == &other) [[unlikely]] return *this;
+            data = std::move(other.data);
+            data_dirt = other.data_dirt;
+            type = other.type;
+            integer = other.integer;
+            return *this;
+        }
 
         /// 设置数值
         template<class T> Value& set(T && val);
@@ -155,6 +198,32 @@ namespace alib5{
         
             /// 构造对象
             ALIB5_API Object(std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE);
+            Object(const Object& other, std::pmr::memory_resource* a)
+            :children(other.children, a)
+            ,object_mapper(other.object_mapper, a){}
+
+            Object(Object&& other) noexcept
+            :children(std::move(other.children))
+            ,object_mapper(std::move(other.object_mapper)){}
+
+            Object(Object&& other, std::pmr::memory_resource* a)
+            :children(std::move(other.children), a)
+            ,object_mapper(std::move(other.object_mapper), a){}
+
+            Object& operator=(const Object& other){
+                if(this == &other) [[unlikely]] return *this;
+                children = other.children;
+                object_mapper = other.object_mapper;
+                return *this;
+            }
+
+            Object& operator=(Object&& other) noexcept {
+                if(this == &other) [[unlikely]] return *this;
+                children = std::move(other.children);
+                object_mapper = std::move(other.object_mapper);
+                return *this;
+            }
+            
             /// Object对索引对齐要求十分严格,因此多线程操作一定要自己加锁
             /// 实际上多线程操作数据加锁应该是常识
             std::pair<AData*,size_t> ALIB5_API ensure_node(std::string_view key);
@@ -269,6 +338,27 @@ namespace alib5{
             container_t values;
 
             ALIB5_API Array(std::pmr::memory_resource * __a = ALIB5_DEFAULT_MEMORY_RESOURCE);
+            
+            Array(const Array& other, std::pmr::memory_resource* a)
+            :values(other.values, a){}
+
+            Array(Array&& other) noexcept
+            :values(std::move(other.values)){}
+
+            Array(Array&& other, std::pmr::memory_resource* a)
+            :values(std::move(other.values), a){}
+
+            Array& operator=(const Array& other) {
+                if(this == &other) [[unlikely]] return *this;
+                values = other.values;
+                return *this;
+            }
+
+            Array& operator=(Array&& other) noexcept {
+                if(this == &other) [[unlikely]] return *this;
+                values = std::move(other.values);
+                return *this;
+            }
 
             /// 比较安全的访问
             /// 但是禁不起shrink
@@ -392,9 +482,11 @@ namespace alib5{
             allocator = __a;
             this->operator=(std::forward<T>(val));   
         }
-        AData(const AData& other) : allocator(other.allocator){
-            data = other.data;
+        AData(const AData& other)
+        :allocator(other.allocator)
+        ,data(clone_data(other.data,other.allocator)){
         }
+        
         AData(AData&& other) noexcept : allocator(other.allocator){
             *this = std::move(other);
         }
@@ -508,8 +600,7 @@ namespace alib5{
             
             if(val.allocator == this->allocator){
                 /// 复制版本
-                decltype(data) safe_d = val.data;
-                data = std::move(safe_d);
+                data = clone_data(val.data, allocator);
             }else{
                 this->data = clone_data(val.data, allocator);
             }

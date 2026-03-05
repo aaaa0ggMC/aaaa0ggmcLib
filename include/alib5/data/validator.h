@@ -32,6 +32,13 @@ namespace alib5{
                 std::pmr::vector<std::pmr::string> args;
 
                 Validate(std::pmr::memory_resource * __a):args(__a){}
+                Validate(const Validate& other, std::pmr::memory_resource* __a)
+                :method(other.method),args(other.args, __a){}
+
+                Validate(const Validate&) = default;
+                Validate(Validate&&) noexcept = default;
+                Validate& operator=(const Validate&) = default;
+                Validate& operator=(Validate&&) noexcept = default;
             };
             std::pmr::vector<Validate> validates;
             /// 对于类型,默认值就是默认值
@@ -40,7 +47,7 @@ namespace alib5{
 
             // validate对性能要求没那么高,选择更加方便的存储方式
             /// 校验子节点,仅作用于Object
-            std::unordered_map<std::pmr::string, Node> children;
+            std::pmr::unordered_map<std::pmr::string, Node> children;
             /// 类型为ARRAY,那么校验的是这个
             std::pmr::vector<Node> array_subs;
             /// 因为ARRAY分tuple和list,这个作为标识
@@ -48,24 +55,71 @@ namespace alib5{
             /// 如果存在默认值,那么冲突的时候覆盖
             bool override_if_conflict;
             
-            Node(std::pmr::memory_resource * __a)
-            :validates(__a)
-            ,min_length(__a)
-            ,max_length(__a)
-            ,array_subs(__a){
+            Node(std::pmr::memory_resource * __a = std::pmr::get_default_resource())
+            :validates(__a),min_length(__a),max_length(__a),children(__a),array_subs(__a){
                 reset();
             }
+
+            Node(const Node& __other, std::pmr::memory_resource* __a)
+            :required(__other.required)
+            ,type_restrict(__other.type_restrict)
+            ,min_length(__other.min_length, __a)
+            ,max_length(__other.max_length, __a)
+            ,validates(__a) // 这里先初始化空 vector
+            ,default_value(std::nullopt)
+            ,children(__other.children, __a)
+            ,array_subs(__other.array_subs, __a)
+            ,is_tuple(__other.is_tuple)
+            ,override_if_conflict(__other.override_if_conflict){
+                validates.reserve(__other.validates.size());
+                for(auto & __v : __other.validates) validates.emplace_back(__v, __a);
+                if(__other.default_value) default_value.emplace(*__other.default_value, __a);
+            }
+
+            Node(const Node& __other)
+            :Node(__other, __other.validates.get_allocator().resource()){}
+            
+            Node(Node&& __other) noexcept
+            :required(__other.required)
+            ,type_restrict(__other.type_restrict)
+            ,min_length(std::move(__other.min_length))
+            ,max_length(std::move(__other.max_length))
+            ,validates(std::move(__other.validates))
+            ,default_value(std::move(__other.default_value))
+            ,children(std::move(__other.children))
+            ,array_subs(std::move(__other.array_subs))
+            ,is_tuple(__other.is_tuple)
+            ,override_if_conflict(__other.override_if_conflict){}
+
+            Node& operator=(Node&&) noexcept = default;
 
             void reset(){
                 required = true;
                 type_restrict = RNone;
-                min_length = max_length = "";
+                min_length.set("");
+                max_length.set("");
                 validates.clear();
-                if(default_value)default_value = std::nullopt;
+                default_value = std::nullopt;
                 children.clear();
                 array_subs.clear();
                 is_tuple = false;
                 override_if_conflict = false;
+            }
+
+            /// 显式写出 operator= 避免编译器生成被删除的版本
+            Node& operator=(const Node& other){
+                if(this == &other) [[unlikely]] return *this;
+                required = other.required;
+                type_restrict = other.type_restrict;
+                min_length = other.min_length;
+                max_length = other.max_length;
+                validates = other.validates;
+                default_value = other.default_value;
+                children = other.children;
+                array_subs = other.array_subs;
+                is_tuple = other.is_tuple;
+                override_if_conflict = other.override_if_conflict;
+                return *this;
             }
         };
 
