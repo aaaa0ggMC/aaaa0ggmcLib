@@ -23,6 +23,10 @@ namespace alib5{
     constexpr int64_t err_internal_web_error = -8;
     /// 网络错误(主要是aweb发出的)
     constexpr int64_t err_web_error = -9;
+    /// 不满足字符集需求,比如trie tree中限制了字符集但是仍然传入了不允许的字符
+    constexpr int64_t err_not_in_charset = -10;
+    /// 空白数据
+    constexpr int64_t err_empty_data = -11;
 
     /// 这里是专门为web开出的错误列表
     constexpr int64_t err_web(int64_t v){return -10000 - v;}
