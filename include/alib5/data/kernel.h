@@ -49,7 +49,7 @@ namespace alib5{
     };
 
     /// 数值
-    /// @warning 多线程下大概率不能正常工作,因此多线程下必须加锁!!!
+    /// @warning 多线程下大概率不能正常工作,因此多线程下必须加锁!!!无论有没有const!!!
     struct ALIB5_API Value{            
         enum Type{
             STRING,
@@ -182,6 +182,7 @@ namespace alib5{
     };
 
     /// 节点
+    /// @warning 并发不安全,无论有没有const!!!
     struct ALIB5_API AData{
         /// 对象
         struct ALIB5_API Object{

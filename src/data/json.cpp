@@ -88,11 +88,11 @@ bool JSON::parse(std::string_view v,dadata_t & root){
 
     ParseResult res;
     if(cfg.rapidjson_recursive){
-        if(cfg.allow_comments)reader.Parse<kParseDefaultFlags | rapidjson::kParseCommentsFlag>(ss, handler);
-        else reader.Parse<kParseDefaultFlags>(ss, handler);
+        if(cfg.allow_comments)res = reader.Parse<kParseDefaultFlags | rapidjson::kParseCommentsFlag>(ss, handler);
+        else res = reader.Parse<kParseDefaultFlags>(ss, handler);
     }else{
-        if(cfg.allow_comments)reader.Parse<kParseIterativeFlag | rapidjson::kParseCommentsFlag>(ss, handler);
-        else reader.Parse<kParseIterativeFlag >(ss, handler);
+        if(cfg.allow_comments)res = reader.Parse<kParseIterativeFlag | rapidjson::kParseCommentsFlag>(ss, handler);
+        else res = reader.Parse<kParseIterativeFlag >(ss, handler);
     }
     return (bool)res;
 }
@@ -215,7 +215,7 @@ JSON::DumpResult JSON::__internal_dump(__dump_fn fn,void * p, const dadata_t & r
 
                         std::format_to(std::back_inserter(double_cache),std::runtime_format("{:.{}f}"),val,cfg.float_precision);
                         fn(double_cache,p);
-                    }
+                    }else fn(v.to<std::string>(),p);
                 }
                 if(cfg.float_precision < 0)fn(v.to<std::string>(),p);
             }else{
