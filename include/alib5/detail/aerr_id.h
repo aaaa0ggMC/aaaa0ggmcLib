@@ -27,6 +27,8 @@ namespace alib5{
     constexpr int64_t err_not_in_charset = -10;
     /// 空白数据
     constexpr int64_t err_empty_data = -11;
+    /// eval错误
+    constexpr int64_t err_eval_error = -12;
 
     /// 这里是专门为web开出的错误列表
     constexpr int64_t err_web(int64_t v){return -10000 - v;}

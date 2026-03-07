@@ -26,6 +26,10 @@ namespace alib5::eval{
         using char_t = CharT;
 
         struct ALIB5_API Calls{
+        protected:
+            /// 这个是rule自动填入的
+            size_t id { 0 };
+        public:
             // 一般都返回true
             using call_t = std::function<bool(ValueType & result,std::span<ValueType> values)>;
 
@@ -39,13 +43,15 @@ namespace alib5::eval{
             bool left_based { true };
             /// 是否具有交换律,具有交换律可以优化graph
             bool swappable { true };
-            // 修饰位置
+            /// 修饰位置
             DecoPos deco_pos { Left };
-            // 这个是优先级
+            /// 这个是优先级
             size_t priority { 100 };
-            // 这个是对应的调用函数
+            /// 这个是对应的调用函数
             call_t caller { nullptr };
 
+            size_t get_id(){ return id; }
+            
             auto& set_right_based(){ return set_left_based(false); }
             auto& set_left_based(bool left = true){ left_based = left; return *this;}
             auto& set_deco(DecoPos pos){ deco_pos = pos; return *this; }
@@ -79,6 +85,14 @@ namespace alib5::eval{
         std::pmr::vector<CharT[2]> delims;
         CharT arg_splitter;
 
+        std::pmr::unordered_set<std::pmr::basic_string<CharT>> buffer;
+        size_t variable_current { 0 };
+        std::pmr::unordered_map<std::basic_string_view<CharT>,size_t> variables;
+
+        size_t constance_current { 0 };
+        std::pmr::unordered_map<std::basic_string_view<CharT>,size_t> constances;
+        std::pmr::unordered_map<std::basic_string_view<CharT>,ValueType> constance_values;
+
         bool check_delim(size_t check_pos,CharT c){
             for(auto & v : delims){
                 if(v[check_pos] == c){
@@ -88,14 +102,74 @@ namespace alib5::eval{
             return false;
         }
 
+        std::basic_string_view<CharT> get_str(std::basic_string_view<CharT> src){
+            // 暂时没搞transparent
+            std::pmr::basic_string<CharT> finder(get_allocator());
+            finder = src;
+
+            auto it = buffer.find(src);
+            if(it != buffer.end())return *it;
+
+            return *(buffer.emplace(std::move(finder)).first);
+        }
+
     public:
-        Rule(std::pmr::memory_resource * __a = ALIB5_DEFAULT_MEMORY_RESOURCE)
+        Rule(std::span<CharT> trie_charset,std::pmr::memory_resource * __a = ALIB5_DEFAULT_MEMORY_RESOURCE)
         :allocator(__a)
         ,delims(__a)
         ,registered_calls(__a)
-        ,trie_mapper(__a){
+        ,trie_mapper(trie_charset,__a)
+        ,buffer(__a)
+        ,variables(__a)
+        ,constance_values(__a)
+        ,constances(__a){
             /// @todo 这里要支持trie_mapper的字符集设置,因此Rule一开始就需要接受支持的字符集
             /// @todo 我们也可以提供默认的字符集 
+        }
+
+        bool add_var(std::basic_string_view<CharT> name){
+            auto fd = get_str(name);
+            if(variables.find(fd) != variables.end() || constances.find(fd) != constances.end()){
+                return false;
+            }
+            variables.emplace(fd,++variable_current);
+            return true;
+        }
+
+        // 支持多次修改
+        bool add_const(std::basic_string_view<CharT> name,ValueType && val){
+            auto fd = get_str(name);
+            if(variables.find(fd) != variables.end()){
+                return false;
+            }
+            auto it = constance_values.find(fd);
+            if(it == constance_values.end()){
+                constances.emplace(fd,++constance_current);
+                constance_values.emplace(fd,std::move(val));
+            }else{
+                *it = std::move(val);
+            }
+            return true;
+        }
+
+        bool add_const(std::basic_string_view<CharT> name,const ValueType & val){
+            ValueType t = val;
+            return add_const(name,std::move(t));
+        }
+
+        // 0 表示不是
+        size_t is_variable(std::basic_string_view<CharT> name){
+            auto f = variables.find(name);
+            return f == variables.end() ? 0 : f->second;
+        }
+
+        size_t is_constance(std::basic_string_view<CharT> name){
+            auto f = constances.find(name);
+            return f == constances.end() ? 0 : f->second;
+        }
+
+        const ValueType& get_constance_value(std::basic_string_view<CharT> name){
+            return constance_values.find(name)->second;
         }
 
         bool is_space(CharT ch){
@@ -138,6 +212,7 @@ namespace alib5::eval{
         auto add_call(Calls && call){ 
             Calls & ref = registered_calls.emplace_back(get_allocator());
             ref = std::move(call); 
+            ref.id = registered_calls.size() - 1;
             
             trie_mapper.add(ref.data,registered_calls.size() - 1);
             return true;
@@ -178,7 +253,7 @@ namespace alib5::eval{
                 TValue,
                 TOperator,
                 TVariable,
-                TConstant,
+                TConstance,
                 TGraph
             };
 
@@ -203,12 +278,20 @@ namespace alib5::eval{
             
             struct Frame{
                 string_t str;
+                /// 0 此时是空列表,因此可以接受 (数值) (函数:Deco为Left)
+                /// 1 此时接受了一个数值 支持 (符号,Deco为Middle或者Right)
+                /// 0(2) 此时缓冲为 数值 符号 (支持符号,Deco为Left,数值,和0等价,因此不做区分)
+                size_t state;
                 Expression * expression;
             };
             // 遍历生成的对象
             std::deque<Frame> frames;
-            std::pmr::vector<const typename rule_t::Calls*> calls;
-            frames.emplace_back(astr,this);
+            std::pmr::vector<const typename rule_t::Calls*> calls(rule.get_allocator());
+            std::pmr::vector<Operand> cache_operands(rule.get_allocator());
+            size_t last_operator_operand = size_t_max;
+            std::pmr::vector<std::basic_string_view<CharT>> tokens;
+
+            frames.emplace_back(astr,0,this);
 
             auto tokenize = [&](Frame & f){
                 Operand op;
@@ -220,7 +303,7 @@ namespace alib5::eval{
                         if(cut >= f.str.size())break;
                     }
                     f.str = f.str.substr(cut);
-                    if(f.str.empty())return;
+                    if(f.str.empty())return true;
                 }
 
                 // 识别token
@@ -235,6 +318,10 @@ namespace alib5::eval{
                 }
 
                 if(calls.empty()){
+                    if(f.state == 1){
+                        invoke_error(err_eval_error,"Invalid grammar!");
+                        return false;
+                    }
                     cut = 0;
                     // 不存在token,得到数值
                     if(rule.is_number(f.str[0])){
@@ -254,24 +341,70 @@ namespace alib5::eval{
                         }
                         // 具体是variable还是constant还需要待定
                         auto slice = f.str.substr(0,cut);
-                        if(rule.is_variable(slice)){
+                        if(auto index = rule.is_variable(slice)){
                             op.type = Operand::Type::TVariable;
+                            op.id = index;
+                        }else if(auto index = rule.is_constance(slice)){
+                            op.type = Operand::Type::TConstance;
+                            op.id = index;
                         }
                     }
+
+                    cache_operands.emplace_back(std::move(op));
                 }else{
                     // 存在token,进行判断
+                    // 根据当前状态进行筛选
+                    size_t j = 0;
+                    for(size_t i = 0;i < calls.size();i++){
+                        if(
+                            (f.state == 0 && calls[i]->deco_pos == DecoPos::Left)
+                            ||
+                            (f.state == 1 && calls[i]->deco_pos != DecoPos::Left)
+                        ){
+                            calls[j] = calls[i];
+                            j++;
+                        }
+                    }
+                    calls.resize(j);
+                    if(calls.empty())return false;
 
+                    op.type = Operand::Type::TOperator;
 
+                    if(f.state == 0){
+                        auto& call = *calls[0];
+                        // 这个时候只能是Left表达式
+                        op.id = call.get_id();
+                        // left deco可以叠加,f.state = 0;
+                    }else if(f.state == 1){
+                        // 这个时候存在中后缀表达式等等
+                        // 具体是中缀还是后缀就需要进行简单词法探测了
+                        // 具体规则就是如果上一个cache_operand是 operator,这根本不存在!!!
+                        // 具体规则应该是如果下一个即将读取的operand是中缀operator,那么他就是后缀
+                        // 可是我怎么知道下一个是中缀operator呢?能判断的也许只有他不存在其他operator了
+                        // 如果下一个不存在数值,那么也是后缀表达式
+
+                        f.state = 0;
+                    }
+                    cache_operands.emplace_back(std::move(op));
+                    last_operator_operand = cache_operands.size() - 1;
                 }
                 f.str = f.str.substr(cut);
+                return true;
             };
 
+            bool fail = false;
             while(!frames.empty()){
                 Frame f = frames.back();
                 frames.pop_back();
+
+
                 while(!f.str.empty()){
-                    tokenize(f);
+                    if(!tokenize(f)){
+                        fail = true;
+                        break;
+                    }
                 }
+                if(fail)break;
             }
         }
 
