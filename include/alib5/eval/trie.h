@@ -111,6 +111,7 @@ namespace alib5::eval::detail{
                 }
                 t = &((*t)[index]);
             }
+            std::cout << "Add mapping:" << mapping_id << std::endl;
             t->add_mapping(mapping_id);
             return true;
         }
@@ -141,7 +142,8 @@ namespace alib5::eval::detail{
                     last_len = i + 1;
                 }
             }
-            return std::make_pair(t->mapping_ids,i);
+            std::cout << std::format("MP:{}",t->mapping_ids) << std::endl;
+            return std::make_pair(std::span(t->mapping_ids),i);
         }
     };
 }
