@@ -2,7 +2,7 @@
 * @brief 与日志有关的函数库
 * @author aaaa0ggmc
 * @last-date 2025/04/04
-* @date 2026/02/03 
+* @date 2026/03/15 
 * @version 5.0
 * @copyright Copyright(C)2025
 ********************************
@@ -78,6 +78,12 @@ namespace alib5{
     /// @brief 默认的loglevel标识，纯粹方便使用的
     using LogLevel = enum Severity;
 
+    /// @brief 支持modify
+    template<class T,class... Args>
+    concept SupportsModifier = requires(T & t,Args&&... args){
+        t.modifier(std::forward<Args>(args)...);   
+    };
+
     /// @brief 日志核心，负责日志队列维护、转发
     struct ALIB5_API Logger{
         using targets_t = std::vector<std::shared_ptr<LogTarget>>;
@@ -100,7 +106,11 @@ namespace alib5{
         /// @brief 普通资源池锁，由于处于配置阶段就不这个讲究细分了
         std::mutex monotic_pool_lock;
         /// @brief Header常量池，只增不减，鉴于LogFactory数目很少
-        std::vector<std::string> header_pool;
+        std::pmr::unordered_set<
+            std::pmr::string,
+            detail::TransparentStringHash,
+            detail::TransparentStringEqual
+        > header_pool;
         /// @brief 专门给消息池的内存池 
         std::pmr::polymorphic_allocator<LogMsg> msg_alloc;
         /// @brief 消息池的resource
@@ -257,7 +267,7 @@ namespace alib5{
             const LogMsgConfig& msg = LogMsgConfig()
         ):logger(binded){
             cfg = LogFactoryConfig(header,def_level,level_should_keep,msg);
-            if(cfg.header.compare(""))cfg.header = binded.register_header(cfg.header);
+            cfg.header = binded.register_header(cfg.header);
         }
 
         /// @brief 信息转发到Logger
@@ -321,6 +331,22 @@ namespace alib5{
             bool valid = !cfg.level_should_keep || cfg.level_should_keep(cfg.def_level);
             return StreamedContext<LogFactory>(cfg.def_level,*this,valid) << t;
         } 
+
+        /// @brief 用于compact
+        template<class... Ts,SupportsModifier<Ts...> Modifier>
+        auto operator()(Modifier & modifier,Ts&&... args){
+            return *this << modifier.modifier(std::forward<Ts>(args)...); 
+        }
+
+        template<class... Ts,SupportsModifier<Ts...> Modifier>
+        auto operator()(int spec_level,Modifier & modifier,Ts&&... args){
+            return (*this)(spec_level) << modifier.modifier(std::forward<Ts>(args)...); 
+        }
+
+        template<class... Ts,SupportsModifier<Ts...> Modifier>
+        auto operator()(LogLevel spec_level,Modifier & modifier,Ts&&... args){
+            return (*this)(spec_level) << modifier.modifier(std::forward<Ts>(args)...); 
+        }
     };
 };
 

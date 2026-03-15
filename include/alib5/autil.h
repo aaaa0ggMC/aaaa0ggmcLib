@@ -1,7 +1,7 @@
 /**@file autil.h
 * @brief 工具库，提供实用函数
 * @author aaaa0ggmc
-* @date 2026/02/28
+* @date 2026/03/15
 * @version 5.0
 * @copyright Copyright(c) 2026
 */
@@ -31,6 +31,11 @@
 #include <utility>
 #include <cstdio>
 #include <unordered_set>
+#include <deque>
+
+#ifdef ALIB5_USE_VULKAN_H
+#include <vulkan/vulkan.h>
+#endif
 
 /// 虽然其实这个没啥用，但是这个还是指定了默认情况下alib5使用的内存资源
 #define ALIB5_DEFAULT_MEMORY_RESOURCE std::pmr::get_default_resource()
@@ -125,6 +130,9 @@ namespace alib5{
 
         /// 转换为其他类型
         template<class T> auto to_T(std::string_view v,std::from_chars_result * result = nullptr) noexcept;
+    
+        template<bool copy = true ,class... Args > 
+        auto _to_string(std::string_view fmt,Args&&... args);
     };
 
     /// @brief 类似Go语言的退出处理
@@ -200,6 +208,32 @@ namespace alib5{
         std::string_view ALIB5_API get_time() noexcept;
         /// 格式化时间
         std::string_view ALIB5_API format_duration(int seconds) noexcept;
+    
+        /// DeferManager,类似c++ atexit的方式
+        struct DeferManager{
+        private:
+            /// 这个就不pmr了,感觉没啥必要
+            std::deque<std::move_only_function<void(void)>> defer_mgr;
+        public:
+            void defer(std::move_only_function<void(void)> function){
+                defer_mgr.emplace_back(std::move(function));
+            }
+
+            ~DeferManager(){
+                while(!defer_mgr.empty()){
+                    auto fn = std::move(defer_mgr.back());
+                    defer_mgr.pop_back();
+
+                    if(fn){
+                        try{ 
+                            fn(); 
+                        }catch(...){ 
+                            // 记录日志或忽略，绝不能让异常逃出析构函数
+                        }
+                    }
+                }
+            }
+        };
     }
 
     /// 字符串处理函数
@@ -555,6 +589,26 @@ namespace alib5{
             }else return std::string_view(fmt_buf);
         }
 
+        template<bool copy ,class... Args > 
+        auto _to_string(std::string_view fmt,Args&&... args){
+            fmt_buf.clear();
+            try{
+                std::format_to(
+                    std::back_inserter(fmt_buf),
+                    std::runtime_format(fmt),
+                    args...
+                );
+            }catch(...){
+                fmt_buf = "[FOMRAT_ERROR]";
+                MAY_INVOKE(3){
+                    invoke_error(err_format_error,"Failed to format the target!");
+                }
+            }
+            if constexpr(copy){
+                return String(fmt_buf.c_str(),ALIB5_DEFAULT_MEMORY_RESOURCE);
+            }else return std::string_view(fmt_buf);
+        }
+
         template<class T,bool copy> [[nodiscard]] auto to_string(T && v) noexcept{
             fmt_buf.clear();
             try{
@@ -615,5 +669,20 @@ namespace alib5{
         }
     }
 }
+
+/// 处理Vulkan之类的
+#ifdef ALIB5_USE_VULKAN_H
+namespace alib5::ext{
+    template<bool copy = true > 
+    auto vulkan_api_to_string(uint32_t spec){
+        return _to_string<copy>("{}.{}.{}.{}", 
+            VK_API_VERSION_VARIANT(spec),
+            VK_API_VERSION_MAJOR(spec),
+            VK_API_VERSION_MINOR(spec),
+            VK_API_VERSION_PATCH(spec)
+        );
+    }
+}
+#endif
 
 #endif

@@ -128,13 +128,13 @@ namespace alib5::eval::detail{
             for(;i < str.size();++i){
                 auto & c = str[i];
                 if(t->empty()){
-                    if(last_valid)return std::make_pair(last_valid->mapping_ids,last_len);
-                    else return std::make_pair(std::span<const size_t>(), i + 1);
+                    if(last_valid)return std::make_pair(std::span(last_valid->mapping_ids),last_len);
+                    else return std::make_pair(std::span<std::size_t>{}, i + 1);
                 }
                 size_t index = get_index((size_t)c);
                 if(index == mapper_invalid){
-                    invoke_error(err_not_in_charset,"Char \'{}\' is not in the charset!",c);
-                    return std::make_pair(std::span<const size_t>(), i + 1);
+                    if(last_valid)return std::make_pair(std::span(last_valid->mapping_ids),last_len);
+                    else return std::make_pair(std::span<std::size_t>{}, i + 1);
                 }
                 t = &((*t)[index]);
                 if(!t->mapping_ids.empty()){
@@ -142,7 +142,6 @@ namespace alib5::eval::detail{
                     last_len = i + 1;
                 }
             }
-            std::cout << std::format("MP:{}",t->mapping_ids) << std::endl;
             return std::make_pair(std::span(t->mapping_ids),i);
         }
     };

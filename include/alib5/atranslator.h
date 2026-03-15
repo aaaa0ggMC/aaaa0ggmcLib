@@ -1,7 +1,7 @@
 /**@file atranslator.h
 * @brief 简单的翻译器
 * @author aaaa0ggmc
-* @date 2026/03/04
+* @date 2026/03/15
 * @version 5.0
 * @copyright Copyright(c) 2026 
 */
@@ -35,6 +35,11 @@ namespace alib5{
             }
         }
     
+        template<IsStringLike S,class... Args>
+        inline auto modifier(S && str,Args&&... args){
+            return translate<true>(std::string_view(str),std::forward<Args>(args)...);
+        }
+
         template<bool copy = true,class... Args>
         inline auto translate(std::string_view keys,Args&&... args){
             auto fmt = get_key_value(keys);
@@ -87,12 +92,13 @@ namespace alib5{
         };
         std::pmr::vector<Offset> offsets;
 
+        void ALIB5_API build_mapper();
+        
         FlattenTranslator(std::pmr::memory_resource * __a = ALIB5_DEFAULT_MEMORY_RESOURCE)
         :value_buffer(__a),
         key_buffer(__a),
         mapper(__a),
-        offsets(__a){}
-        void ALIB5_API build_mapper();
+        offsets(__a){}    
     public:
         FlattenTranslator(const FlattenTranslator & v)
         :type(v.type),
@@ -196,8 +202,6 @@ namespace alib5{
         ALIB5_API flatten_jsonp(std::string_view key = "",size_t reserve = conf_flat_reserve_size,std::pmr::memory_resource * __a = nullptr);
 
     };
-
-
 }
 
 

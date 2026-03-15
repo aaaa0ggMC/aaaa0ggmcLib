@@ -19,6 +19,14 @@ namespace alib5::eval{
         Middle ///< 一般的算术符号都这样,比如 a + b , a / b
     }; 
 
+    // 一般都返回true
+    enum Operation{
+        /// 已经处理完毕,转发单值
+        Processed,
+        /// 也许你对values进行了修改,但是无论如何,这里将转发values给下一个处理对象
+        Forward
+    };
+
     /// Rule应该做到尽量不更改
     template<class ValueType = double ,class CharT = char >
     struct ALIB5_API Rule{
@@ -29,8 +37,7 @@ namespace alib5::eval{
             /// 这个是rule自动填入的
             size_t id { 0 };
         public:
-            // 一般都返回true
-            using call_t = std::function<bool(ValueType & result,std::span<ValueType> values)>;
+            using call_t = std::function<Operation(ValueType & result,std::span<ValueType> values)>;
 
             std::pmr::basic_string<CharT> data;
             /// 允许的最大参数个数,传入size_t_max意思不言而喻就是变参了
@@ -69,6 +76,11 @@ namespace alib5::eval{
             Calls(std::pmr::memory_resource * __a  = ALIB5_DEFAULT_MEMORY_RESOURCE)
             :data(__a){}
         };
+
+        struct Delim{
+            std::array<std::basic_string_view<CharT>,2> delims;
+            size_t mapping_id;
+        };
     // private:
         std::pmr::memory_resource * allocator;
         /// 这两个是保持等价关系的
@@ -82,8 +94,8 @@ namespace alib5::eval{
         std::function<bool(CharT)> m_begin_number;
         std::function<bool(CharT)> m_is_token_chars;
         std::function<size_t(std::basic_string_view<CharT>,ValueType&)> m_to_value;
-        std::pmr::vector<std::array<std::basic_string_view<CharT>,2>> delims;
-        CharT arg_splitter;
+        std::pmr::vector<Delim> delims;
+        std::basic_string_view<CharT> arg_splitter;
 
         std::pmr::unordered_set<std::pmr::basic_string<CharT>> buffer;
         size_t variable_current { 0 };
@@ -93,22 +105,22 @@ namespace alib5::eval{
         std::pmr::unordered_map<std::basic_string_view<CharT>,size_t> constances;
         std::pmr::unordered_map<std::basic_string_view<CharT>,ValueType> constance_values;
 
-        bool check_delim(size_t check_pos,std::basic_string_view<CharT> c){
-            for(auto & v : delims){
-                if(v[check_pos] == c){
-                    return true;
+        size_t check_delim(size_t check_pos,std::basic_string_view<CharT> c){
+            for(size_t  i = 0;i < delims.size();++i){
+                if(delims[i].delims[check_pos] == c){
+                    return i;
                 }
             }
-            return false;
+            return size_t_max;
         }
 
-        bool beg_delim(size_t check_pos,std::basic_string_view<CharT> c){
-            for(auto & v : delims){
-                if(c.starts_with(v[check_pos])){
-                    return true;
+        auto beg_delim(size_t check_pos,std::basic_string_view<CharT> c){
+            for(size_t  i = 0;i < delims.size();++i){
+                if(c.starts_with(delims[i].delims[check_pos])){
+                    return i;
                 }
             }
-            return false;
+            return size_t_max;
         }
 
         std::basic_string_view<CharT> get_str(std::basic_string_view<CharT> src){
@@ -116,7 +128,7 @@ namespace alib5::eval{
             std::pmr::basic_string<CharT> finder(get_allocator());
             finder = src;
 
-            auto it = buffer.find(src);
+            auto it = buffer.find(finder);
             if(it != buffer.end())return *it;
 
             return *(buffer.emplace(std::move(finder)).first);
@@ -134,6 +146,14 @@ namespace alib5::eval{
         ,constances(__a){
             /// @todo 这里要支持trie_mapper的字符集设置,因此Rule一开始就需要接受支持的字符集
             /// @todo 我们也可以提供默认的字符集 
+        }
+
+        std::basic_string_view<CharT> get_arg_splitter(){
+            return arg_splitter;
+        }
+
+        void set_arg_splitter(std::basic_string_view<CharT> s){
+            arg_splitter = get_str(s);
         }
 
         bool add_var(std::basic_string_view<CharT> name){
@@ -177,6 +197,11 @@ namespace alib5::eval{
             return f == constances.end() ? 0 : f->second;
         }
 
+        Delim get_delim(size_t index){
+            panic_if(index >= delims.size(),"Array out of bounds!");
+            return delims[index];
+        }
+
         const ValueType& get_constance_value(std::basic_string_view<CharT> name){
             return constance_values.find(name)->second;
         }
@@ -196,19 +221,19 @@ namespace alib5::eval{
             return false;
         }
 
-        bool is_left_delim(std::basic_string_view<CharT> c){
+        size_t is_left_delim(std::basic_string_view<CharT> c){
             return check_delim(0, c);
         }
 
-        bool is_right_delim(std::basic_string_view<CharT> c){
+        size_t is_right_delim(std::basic_string_view<CharT> c){
             return check_delim(1, c);
         }
 
-        bool beg_left_delim(std::basic_string_view<CharT> c){
+        size_t beg_left_delim(std::basic_string_view<CharT> c){
             return beg_delim(0, c);
         }
 
-        bool beg_right_delim(std::basic_string_view<CharT> c){
+        size_t beg_right_delim(std::basic_string_view<CharT> c){
             return beg_delim(1, c);
         }
 
@@ -229,6 +254,26 @@ namespace alib5::eval{
             c = call;
             return add_call(std::move(c));
         }
+
+        auto add_delim(std::span<const std::basic_string_view<CharT>> delim,Calls && call){
+            if(delim.size() < 2)return false;
+            Delim d;
+            d.delims[0] = get_str(delim[0]);
+            d.delims[1] = get_str(delim[1]);
+            d.mapping_id = registered_calls.size();
+            delims.emplace_back(d);
+
+            // 这里保证存进去的left delim
+            call.data = d.delims[0];
+
+            return add_call(std::move(call));
+        }
+
+        auto add_delim(std::span<const std::basic_string_view<CharT>> delim,const Calls & call){
+            Calls c(get_allocator());
+            c = call;
+            return add_delim(delim,std::move(c));
+        }
         
         // 应该会自己决定是move还是copy
         auto add_call(Calls && call){ 
@@ -247,11 +292,9 @@ namespace alib5::eval{
 
         size_t fetch_calls(std::basic_string_view<CharT> name,std::pmr::vector<const Calls*>& calls){
             auto [id_span, consumed] = trie_mapper.get(name); 
-            std::cout << std::format("MP2:{}",id_span) << std::endl;
             if(!id_span.empty()){
                 calls.reserve(calls.size() + id_span.size());
                 for(const auto& id : id_span){
-                    std::cout << "Mapping:" << id << std::endl;
                     calls.emplace_back(&get_call(id));
                 }
             }
@@ -271,106 +314,149 @@ namespace alib5::eval{
     struct ALIB5_API Expression{
         using string_t = std::basic_string_view<CharT>;
         using rule_t = Rule<ValueType,CharT>;
-        struct ALIB5_API Operand{
-            enum class Type : int {
-                TNone,
-                TValue,
-                TOperator,
-                TVariable,
-                TConstance,
-                TGraph
+        
+        struct Target{
+            enum Type{
+                None,
+                Value,
+                Variable,
+                Constance,
+                Graph
             };
 
-            Type type { Type::TNone };
-            ValueType value { ValueType() };
             // 这个是对于operator & variable & constant & graph 一起用的
+            Type type { Value };
             size_t id { 0 };
+            ValueType value { ValueType() };
         };
+
+        struct OpCode{
+            /// 除了函数,绝大多数都是二元
+            std::pmr::vector<Target> targets;
+            const typename rule_t::Calls* b;
+        };
+
         rule_t & rule;
         size_t depth {0};
-        // 为了防止引用失效,所有的都是deque
-        // 因此expression性能会差一点
-        std::pmr::deque<Expression> sub_graphs;
-        std::pmr::deque<Operand> operands;
+        // 这个图的id,在from计算出的expression列表中,这个是线性的
+        size_t id {0};
+        std::pmr::deque<OpCode> operands;
 
+        Expression(rule_t & irule)
+        :rule(irule)
+        ,operands(irule.get_allocator()){}
+    };
 
-        bool from(string_t astr){
-            // 清理数据
-            sub_graphs.clear();
-            operands.clear();
-            if(astr.empty())return true;
+    template<class ValueType = double ,class CharT = char >
+    struct ALIB5_API Eval{
+        using rule_t = Rule<ValueType,CharT>;
+        const rule_t & rule;
+
+        Eval(const rule_t & irule)
+        :rule(irule){}
+    };
+
+    using rule_t = Rule<>;
+    using call_t = rule_t::Calls;
+    using deco_t = DecoPos;
+    using expression_t = Expression<>;
+    using eval_t = Eval<>;
+}
+
+namespace alib5::eval{
+    template<class ValueType = double ,class CharT = char >
+    inline bool from(std::basic_string_view<CharT> astr,Rule<ValueType,CharT> & rule){
+        using TRule = Rule<ValueType,CharT>;
+        using TCall = TRule::Calls;
+        
+        if(astr.empty())return true;
+    
+        //// 词法解析部分
+        std::pmr::vector<const typename rule_t::Calls*> calls(rule.get_allocator());
+        struct Token{
+            enum Type{
+                None,
+                Value,
+                Variable,
+                Const,
+                DelimLeft,
+                DelimRight,
+                ArgSplit,
+                Operator
+            };
             
-            struct Frame{
-                string_t str;
-                /// 0 此时是空列表,因此可以接受 (数值) (函数:Deco为Left)
-                /// 1 此时接受了一个数值 支持 (符号,Deco为Middle或者Right)
-                /// 0(2) 此时缓冲为 数值 符号 (支持符号,Deco为Left,数值,和0等价,因此不做区分)
-                size_t state;
-                Expression * expression;
-            };
-            // 遍历生成的对象
-            std::deque<Frame> frames;
-            std::pmr::vector<const typename rule_t::Calls*> calls(rule.get_allocator());
-            std::pmr::vector<Operand> cache_operands(rule.get_allocator());
-            size_t last_operator_operand = size_t_max;
+            std::basic_string_view<CharT> str;
+            Type type { None };
+            size_t id { 0 };
+            std::pmr::vector<const typename rule_t::Calls*> calls;
+            ValueType value {ValueType()};
+            const typename rule_t::Calls * delim_call;
+            // 语义分析要用到的
+            const typename rule_t::Calls * focus_call;
+            
 
-            struct Token{
-                std::basic_string_view<CharT> str;
-                Operand::Type type { Operand::Type::TNone };
-                size_t id { 0 };
-                std::pmr::vector<const typename rule_t::Calls*> calls;
-                ValueType value {ValueType()};
-                // 1 left delim
-                int delim {0};
-                std::pmr::vector<std::basic_string_view<CharT>> delim_content;
-                
-
-                Token(std::pmr::memory_resource * __a)
-                :calls(__a)
-                ,delim_content(__a){}
-            };
-            std::pmr::vector<Token> tokens;
-
-            frames.emplace_back(astr,0,this);
-
-            auto tokenize = [&](Frame & ff){
-                auto str = ff.str;
-                while(!str.empty()){
-                    {
-                        size_t cut = 0;
-                        while(rule.is_space(str[cut])){
-                            ++cut;
-                            if(cut >= str.size())break;
-                        }
-                        str = str.substr(cut);
-                        if(str.empty())return true;
-                    }
-
-                    calls.clear();
+            Token(std::pmr::memory_resource * __a)
+            :calls(__a){}
+        };
+        std::pmr::vector<Token> tokens;
+        auto tokenize = [&](std::basic_string_view<CharT> str){
+            while(!str.empty()){
+                {
                     size_t cut = 0;
+                    while(rule.is_space(str[cut])){
+                        ++cut;
+                        if(cut >= str.size())break;
+                    }
+                    str = str.substr(cut);
+                    if(str.empty())return true;
+                }
+                Token t(rule.get_allocator());
+                size_t cut = 0;
+
+                // 看看是不是arg sep
+                if(str.starts_with(rule.get_arg_splitter())){
+                    t.type = Token::ArgSplit;
+                    cut = rule.get_arg_splitter().size();
+                    t.str = str.substr(0,cut);
+                }
+                
+                // 再看看是不是delim
+                if(auto d = rule.beg_left_delim(str); d != size_t_max){
+                    auto delim = rule.get_delim(d);
+                    auto & call = rule.get_call(delim.mapping_id);
+
+                    t.type = Token::DelimLeft;
+                    // 一定存在一个左缀call
+                    rule.fetch_calls(delim.delims[0],t.calls);
+                    t.delim_call = &call;
+                    cut = delim.delims[0].size();
+                    t.str = str.substr(0,cut);
+                }else if(auto d = rule.beg_right_delim(str); d != size_t_max){
+                    auto delim = rule.get_delim(d);
+                    auto & call = rule.get_call(delim.mapping_id);
+                    t.type = Token::DelimRight;
+                    rule.fetch_calls(delim.delims[0],t.calls);
+                    t.delim_call = &call;
+                    cut = delim.delims.size();
+                    t.str = str.substr(0,cut);
+                }
+
+                if(cut == 0){
+                    calls.clear();
                     {
-                        while(!rule.is_space(str[cut]) && 
-                             !rule.is_left_delim(std::basic_string_view<CharT>(str.begin() + cut,1))
-                        ){
+                        while(!rule.is_space(str[cut])){
                             ++cut;
                             if(cut >= str.size())break;
                         }
                         cut = rule.fetch_calls(str.substr(0,cut),calls);
                     }
-
-                    // 先看看是不是delim
-                    Token t(rule.get_allocator());
-                    if(rule.beg_left_delim(str)){
-
-                    }
-
                     if(calls.empty()){
                         cut = 0;
                         // 不存在token,得到数值
                         if(rule.is_number_begin(str[0])){
                             // 读取完整的一个数
                             // 这里多了一次冗余判断,但是为了好看,暂时不改
-                            t.type = Operand::Type::TValue;
+                            t.type = Token::Value;
                             size_t re_cut = rule.to_value(str, t.value); 
                             
                             if(re_cut == 0){
@@ -392,10 +478,10 @@ namespace alib5::eval{
                             // 具体是variable还是constant还需要待定
                             auto slice = str.substr(0,cut);
                             if(auto index = rule.is_variable(slice)){
-                                t.type = Operand::Type::TVariable;
+                                t.type = Token::Variable;
                                 t.id = index;
                             }else if(auto index = rule.is_constance(slice)){
-                                t.type = Operand::Type::TConstance;
+                                t.type = Token::Const;
                                 t.id = index;
                             }
                             t.str = slice;
@@ -403,57 +489,187 @@ namespace alib5::eval{
                     }else{
                         t.calls = std::move(calls);
                         t.str = str.substr(0,cut);
-                        t.type = Operand::Type::TOperator;
+                        t.type = Token::Operator;
                     }
-                    tokens.emplace_back(std::move(t));
-
-                    str = str.substr(cut);
-                    std::cout << "REMAINING \"" << str << "\"" << std::endl;
                 }
-                return true;
-            };
-
-            auto analyse = [&](Frame & f){
-
-            };
-
-            bool fail = false;
-            while(!frames.empty()){
-                Frame f = frames.back();
-                frames.pop_back();
-
-                tokens.clear();
-                if(!tokenize(f))break;
-                
-                for(auto & t : tokens){
-                    std::cout << t.str << " " << (int)t.type << " " << t.id << " " << t.value << std::endl;
-                }
-                //if(!analyse(f))break;
+                tokens.emplace_back(std::move(t));
+                str = str.substr(cut);
             }
-            return !fail;
+            return true;
+        };
+
+        if(!tokenize(astr))return false;
+        auto get_str = [](Token::Type t){
+            #define UU(X) case Token::X: return ""#X;
+            switch(t){
+                UU(ArgSplit)
+                UU(None)
+                UU(Value)
+                UU(Variable)
+                UU(Const)
+                UU(DelimLeft)
+                UU(DelimRight)
+                UU(Operator)
+            }
+        };
+
+        std::cout << std::left 
+        << std::setw(12) << "Type"
+        << std::setw(12) << "String"
+        << std::setw(12) << "ID"
+        << std::setw(10) << "Value"
+        << std::endl;
+        std::cout << std::string(46, '-') << std::endl;
+
+        for(Token & t : tokens){
+            std::cout << std::left
+                    << std::setw(12) << get_str(t.type)
+                    << std::setw(12) << (std::string("\"") + t.str + "\"")
+                    << std::setw(12) << t.id
+                    << std::setw(10) << t.value
+                    << std::endl; 
         }
 
-        Expression(rule_t & irule)
-        :rule(irule)
-        ,sub_graphs(irule.get_allocator())
-        ,operands(irule.get_allocator()){}
-    };
+        //// 语法解析部分
 
-    template<class ValueType = double ,class CharT = char >
-    struct ALIB5_API Eval{
-        using rule_t = Rule<ValueType,CharT>;
-        const rule_t & rule;
+        using exp_t = Expression<ValueType,CharT>;
+        struct Frame{
+            std::span<Token> tokens;
+            /// 0 此时是空列表,因此可以接受 (数值) (函数:Deco为Left)
+            /// 1 此时接受了一个数值 支持 (符号,Deco为Middle或者Right)
+            /// 0(2) 此时缓冲为 数值 符号 (支持符号,Deco为Left,数值,和0等价,因此不做区分)
+            size_t state;
+            exp_t * expression;
+        };
+        // 遍历生成的对象
+        std::deque<Frame> frames;
+        std::pmr::deque<exp_t> expressions (rule.get_allocator());
 
-        Eval(const rule_t & irule)
-        :rule(irule){}
-    };
+        frames.emplace_back(Frame{
+            .tokens = tokens,
+            .state = 0,
+            .expression = &expressions.emplace_back(rule)
+        });
+        
+        Token empty_token(rule.get_allocator());
+        empty_token.type = Token::None;
+        
+        std::pmr::deque<Token *> cache_line (rule.get_allocator());
+        size_t computable_count = 0;
+        Token * cache_line_last = nullptr;
 
-    using rule_t = Rule<>;
-    using call_t = rule_t::Calls;
-    using deco_t = DecoPos;
-    using expression_t = Expression<>;
-    using eval_t = Eval<>;
-}
+        auto is_value = [](Token & t){
+            return t.type == Token::Value || t.type == Token::Variable || t.type == Token::Const;
+        };
+
+        while(!frames.empty()){
+            Frame f = frames.back(); 
+            frames.pop_back();
+
+            auto get_token = [&f,&empty_token](size_t index)->Token&{
+                if(index >= f.tokens.size())return empty_token;
+                return f.tokens[index];
+            };
+
+            // 规约
+            auto generate = [&]{
+                while(!cache_line.empty()){
+                    Token * t = cache_line.back();
+                    cache_line.pop_back();
+
+                    if(is_value(t)){
+                        // 往前追溯t的左op
+                        while(!cache_line.empty()){
+
+                        }
+
+                    }
+                }
+            };
+
+            for(size_t index = 0;index < f.tokens.size();++index){
+                Token & t = get_token(index);
+                // 这个是单纯的数据
+                if(f.state == 0){
+                    // 在遇到第一个数值/delim之前,全部都应该是左op(delim就是左op)
+                    if(t.type == Token::Operator){
+                        // 尝试寻找左op
+                        const TCall * found = nullptr;
+                        for(auto& c : t.calls){
+                            if(c->deco_pos == Left){
+                                found = c;
+                                break;
+                            }
+                        }
+                        if(!found){
+                            std::cout << "Invalid grammar!" << std::endl;
+                            return false;
+                        }
+                        t.focus_call = found;
+                    }else if(is_value(t)){
+                        // 遇到数值切换f.state 为  1
+                        ++computable_count;
+                        f.state = 1;
+                    }
+
+                    cache_line.emplace_back(&t);
+                }else if(f.state == 1){
+                    // 一定得是一个Middle Op,如果是delim可以进行歧义判断
+                    if(is_value(t)){
+                        std::cout << "Invalid grammar" << std::endl;
+                        return false;
+                    }
+                    /// 尝试寻找中/右Op
+                    {
+                        const TCall * found = nullptr;
+                        for(auto& c : t.calls){
+                            if(c->deco_pos == Middle || c->deco_pos == Right){
+                                found = c;
+                                break;
+                            }
+                        }
+                        if(!found){
+                            std::cout << "Invalid grammar!" << std::endl;
+                            return false;
+                        }
+                        t.focus_call = found;
+                    }
+                    // 对于超出两个computable时,说明此时可以尝试进行归约
+                    // 并且存在中后缀表达式可以用于比较优先级时
+                    if(computable_count >= 2 && cache_line_last && 
+                        (   // 条件一,优先级严格小于
+                            t.focus_call->priority < cache_line_last->focus_call->priority ||
+                            // 条件二,符号一致,并且左结合
+                            ((t.focus_call->id == cache_line_last->focus_call->id) && t.focus_call->left_based )
+                        )
+                    ){
+                        // 这样才尝试规约
+                        generate();
+                    }
+                    // 之后依旧加入这个表中
+                    cache_line.emplace_back(&t);
+                    // 保存最后一个符号
+                    cache_line_last = &t;
+                    // 中缀切换模式
+                    if(t.focus_call->deco_pos == Middle){
+                        f.state = 0;
+                    }
+                }
+                if(index + 1 == tokens.size()){
+                    // 最后进行一次规约
+                    generate();
+                }
+            }
+        }
+
+        return true;
+    }
+
+    template<class CharT = char >
+    auto from(const CharT * sv, auto&& rule) {
+        return from(std::basic_string_view<CharT>(sv), std::forward<decltype(rule)>(rule));
+    }
+};
 
 
 #endif

@@ -110,7 +110,8 @@ Logger::Logger(const LoggerConfig & cfg)
 ,msg_semaphore(0)
 ,config(cfg)
 ,tag_buf()
-,tag_alloc(&tag_buf){
+,tag_alloc(&tag_buf)
+,header_pool(){
     logger_not_on_destroying = true;
     back_pressure_threshold = cfg.back_pressure_multiply * 
                 cfg.fetch_message_count_max * cfg.consumer_count;
@@ -180,8 +181,8 @@ bool Logger::push_message_pmr(int level,std::string_view head,std::pmr::string &
 std::string_view Logger::register_header(std::string_view val){
     if(val.compare("")){
         std::lock_guard<std::mutex> lock(monotic_pool_lock);
-        auto it = std::find(header_pool.begin(),header_pool.end(),val);
+        auto it = header_pool.find(val);
         if(it != header_pool.end())return *it;
-        return header_pool.emplace_back(val);
+        return *header_pool.emplace(val).first;
     }else return "";
 }

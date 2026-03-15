@@ -721,12 +721,12 @@ namespace alib5{
         }
         /// 从文件中读取
         template<IsDataPolicy<AData> DataPolicy = data::JSON> auto load_from_entry(io::FileEntry entry,DataPolicy && parser = DataPolicy()){
-            panic_debug(entry.invalid(),"Entry is invalid!");
+            // panic_debug(entry.invalid(),"Entry is invalid!");
             // release模式下invalid read出来是""
             return load_from_memory(entry.read(),std::forward<DataPolicy>(parser));
         }
         template<IsDataPolicy<AData> DataPolicy = data::JSON> auto load_from_file(std::string_view path,DataPolicy && parser = DataPolicy()){
-            return load_from_entry(io::load_entry(path),std::forward<DataPolicy>(parser));
+            return load_from_entry(io::load_entry(path,false),std::forward<DataPolicy>(parser));
         }
 
         /// 写入对象
