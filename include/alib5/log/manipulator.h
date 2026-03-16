@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 一些基本的操作符
  * @version 0.1
- * @date 2026/02/03
+ * @date 2026/03/16
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -24,6 +24,30 @@ namespace alib5{
     inline void ALIB5_API endlog(LogEnd){}
     /// @brief 另一种方式
     constexpr LogEnd fls = {};
+    /// @brief 默认省略符号
+    constexpr std::string_view default_omit_str = "...[+{} bytes]";
+
+    /// @brief 临时存储的东西
+    template<class T>
+    struct ALIB5_API log_omit{
+        T v;
+        size_t max_length;
+        std::string_view omit_str;
+        bool need_fmt;
+
+        template<class R>
+        log_omit(R && iv,size_t max_count,std::string_view omit = default_omit_str,bool ineed_fmt = true)
+        :v(std::forward<R>(iv))
+        ,max_length(max_count)
+        ,omit_str(omit)
+        ,need_fmt(ineed_fmt){}
+
+        log_omit(const log_omit & ) = delete;
+        log_omit& operator=(const log_omit&) = delete;
+    };
+    template<class R,class... Args>
+    log_omit(R && iv,Args&&...) -> log_omit<R>;
+    
 
     struct ALIB5_API log_source{
         /// @brief 缓存的路径

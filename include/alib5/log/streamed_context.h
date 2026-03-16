@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 流式输出处控制，主持write_to_log(类函数&全局函数)编译期注入
  * @version 0.1
- * @date 2026/02/03
+ * @date 2026/03/16
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -60,16 +60,38 @@ namespace alib5{
         std::string_view fmt_str;
         /// @brief 格式化是否是临时的
         bool fmt_tmp;
+        /// @brief 对于内部格式化函数,可能需要锁住整个fmt_tmp
+        bool fmt_locked;
         /// @brief 配置信息
         LogMsgConfig msg_cfg;
         /// @brief TAG信息
         std::pmr::vector<LogCustomTag> tags;
+
+        struct FMTLock{
+            bool & v;
+            FMTLock(bool & x):v(x){
+                v = true;
+            }
+            ~FMTLock(){
+                v = false;
+            }
+        };
         
         // 禁止拷贝，允许移动
         StreamedContext(const StreamedContext&) = delete;
         StreamedContext& operator=(const StreamedContext&) = delete;
         StreamedContext(StreamedContext&&) = default;
         StreamedContext& operator=(StreamedContext&&) = default;
+
+        auto lock_fmt(){
+            return FMTLock(fmt_locked);
+        }
+
+        auto try_restore_fmt(){
+            if(fmt_tmp && !fmt_locked){
+                fmt_str = "";
+            } 
+        }
 
         /// @brief 初始化字符串用的内存池以及level
         inline StreamedContext(int level,LogFactory & fac,bool valid = true)
@@ -82,6 +104,7 @@ namespace alib5{
             fmt_tmp = false;
             context_used = false;
             context_valid = valid;
+            fmt_locked = false;
         }
 
         /// @brief  上传日志
@@ -104,8 +127,29 @@ namespace alib5{
                         fmt_str.empty() ? "{}" : fmt_str, 
                         ctx);
                         
-            if(fmt_tmp){
-                fmt_str = "";
+            try_restore_fmt();
+            return std::move(*this);
+        }
+
+        /// @brief 省略处理
+        template<class T>
+        StreamedContext&& operator<<(log_omit<T> && val) && {
+            if(!context_valid)return std::move(*this);
+            // 记录当前长度
+            size_t clen = cache_str.size();
+            std::move(*this) << std::forward<T>(val.v);
+            // 记录现在长度
+            size_t clen2 = cache_str.size();
+            // 进行截断
+            if(clen + val.max_length < clen2){
+                cache_str.resize(clen + val.max_length);
+                if(val.need_fmt){
+                    std::format_to(
+                        std::back_inserter(cache_str),
+                        std::runtime_format(val.omit_str),
+                        clen2 - clen - val.max_length
+                    );
+                }else cache_str.append(val.omit_str);
             }
             return std::move(*this);
         }
@@ -124,9 +168,7 @@ namespace alib5{
                 std::vformat_to(std::back_inserter(cache_str),fmt_str.data(),
                     std::make_format_args(t)
                 );
-                if(fmt_tmp){
-                    fmt_str = "";
-                }
+                try_restore_fmt();
             }
             return std::move(*this);
         }
@@ -248,11 +290,16 @@ namespace alib5{
             if(!context_valid)return std::move(*this);
             std::span<const T,M*N> data (glm::value_ptr(v),M*N);
             cache_str.append("{");
-            for(int m = 0;m < M;++m){
-                std::move(*this) << data.subspan(m*N,N);
-                if(m+1 != M)cache_str.append(" , ");
+            {
+                auto lock = lock_fmt();
+                for(int m = 0;m < M;++m){
+                    std::move(*this) << data.subspan(m*N,N);
+                    if(m+1 != M)cache_str.append(" , ");
+                }
             }
             cache_str.append("}");
+            
+            try_restore_fmt();
             return std::move(*this);
         }
         /// @brief 格式化glm的四元数
