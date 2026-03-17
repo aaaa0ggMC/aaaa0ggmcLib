@@ -573,16 +573,54 @@ namespace alib5::eval{
 
             // 规约
             auto generate = [&]{
+                std::pmr::deque<Token*> left_tokens(rule.get_allocator());
+                std::pmr::deque<Token*> right_tokens(rule.get_allocator());
+
+                std::pmr::deque<Token*> values;
+                std::pmr::deque<Token*> ops;
+
                 while(!cache_line.empty()){
                     Token * t = cache_line.back();
                     cache_line.pop_back();
 
-                    if(is_value(t)){
+                    if(is_value(*t)){
                         // 往前追溯t的左op
                         while(!cache_line.empty()){
+                            Token * tx = cache_line.back();
+                            
+                            if(tx->focus_call->deco_pos == Left){
+                                left_tokens.emplace_back(tx);
+                            }else break;
+                            cache_line.pop_back();
+                        }
+                         // 进行规约
+                        std::cout << "RECOGNIZED " << t->value << " "
+                        << "LEFT " << left_tokens.size() << " RIGHT " << right_tokens.size() << std::endl;
 
+                        // 这里生成这个value的左右处理,需要比较left token和right token的优先级从而进行运算
+                        // 这一块类似shunting yard
+                        values.emplace_back(t);
+
+                        left_tokens.clear();
+                        right_tokens.clear();
+
+                        if(values.size() >= 2){
+                            // 只剩下middle而middle绝对是二元的
+                            if(ops.empty()){
+                                panic("不是这样的");
+                            }
+                            Token * t = ops.back();
+                            ops.pop_back();
+
+                            
+                            std::cout << "TOKEN " << t->str << " BET " << values[0]->value << " " << values[1]->value << std::endl;
                         }
 
+
+                    }else if(t->focus_call->deco_pos == Right){
+                        right_tokens.emplace_back(t);
+                    }else if(t->focus_call->deco_pos == Middle){
+                        ops.emplace_back(t);
                     }
                 }
             };
