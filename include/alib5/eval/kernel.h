@@ -340,29 +340,21 @@ namespace alib5::eval{
         ,operands(irule.get_allocator()){}
     };
 
-    template<class ValueType = double ,class CharT = char >
-    struct ALIB5_API Eval{
-        using rule_t = Rule<ValueType,CharT>;
-        const rule_t & rule;
-
-        Eval(const rule_t & irule)
-        :rule(irule){}
-    };
-
     using rule_t = Rule<>;
     using call_t = rule_t::Calls;
     using deco_t = DecoPos;
     using expression_t = Expression<>;
-    using eval_t = Eval<>;
 }
 
 namespace alib5::eval{
     template<class ValueType = double ,class CharT = char >
-    inline bool from(std::basic_string_view<CharT> astr,Rule<ValueType,CharT> & rule){
+    inline auto from(std::basic_string_view<CharT> astr,Rule<ValueType,CharT> & rule,Context<CharT,ValueType> & ctx){
         using TRule = Rule<ValueType,CharT>;
         using TCall = TRule::Calls;
+        /// @todo 其实这里使用context的最好
+        Executor<CharT,ValueType> executor(ctx,rule.get_allocator());
         
-        if(astr.empty())return true;
+        if(astr.empty())return executor;
     
         //// 词法解析部分
         std::pmr::vector<const typename rule_t::Calls*> calls(rule.get_allocator());
@@ -491,7 +483,7 @@ namespace alib5::eval{
             return true;
         };
 
-        if(!tokenize(astr))return false;
+        if(!tokenize(astr))return executor;
         auto get_str = [](Token::Type t){
             #define UU(X) case Token::X: return ""#X;
             switch(t){
@@ -592,6 +584,7 @@ namespace alib5::eval{
 
                         // 这里生成这个value的左右处理,需要比较left token和right token的优先级从而进行运算
                         // 这一块类似shunting yard
+                        // 先不处理前缀后缀
                         values.emplace_back(t);
 
                         left_tokens.clear();
@@ -604,6 +597,15 @@ namespace alib5::eval{
                             }
                             Token * t = ops.back();
                             ops.pop_back();
+
+                            if(values[1]->type == Token::Value){
+                                // 加入cacheline,同时进行运算
+                                if(!left_tokens.size() && right_tokens.size()){
+                                    executor.with_cacheline(,t);
+                                }else panic("Not supp.");
+                            }else panic("Not supp.");
+
+                            
 
                             
                             std::cout << "TOKEN " << t->str << " BET " << values[0]->value << " " << values[1]->value << std::endl;
@@ -634,7 +636,7 @@ namespace alib5::eval{
                         }
                         if(!found){
                             std::cout << "Invalid grammar!" << std::endl;
-                            return false;
+                            return executor;
                         }
                         t.focus_call = found;
                     }else if(is_value(t)){
@@ -648,7 +650,7 @@ namespace alib5::eval{
                     // 一定得是一个Middle Op,如果是delim可以进行歧义判断
                     if(is_value(t)){
                         std::cout << "Invalid grammar" << std::endl;
-                        return false;
+                        return executor;
                     }
                     /// 尝试寻找中/右Op
                     {
@@ -661,7 +663,7 @@ namespace alib5::eval{
                         }
                         if(!found){
                             std::cout << "Invalid grammar!" << std::endl;
-                            return false;
+                            return executor;
                         }
                         t.focus_call = found;
                     }
@@ -693,12 +695,12 @@ namespace alib5::eval{
             }
         }
 
-        return true;
+        return executor;
     }
 
     template<class CharT = char >
-    auto from(const CharT * sv, auto&& rule) {
-        return from(std::basic_string_view<CharT>(sv), std::forward<decltype(rule)>(rule));
+    auto from(const CharT * sv, auto&& rule,auto && ctx) {
+        return from(std::basic_string_view<CharT>(sv), std::forward<decltype(rule)>(rule),std::forward<decltype(ctx)>(ctx));
     }
 };
 

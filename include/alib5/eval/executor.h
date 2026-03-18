@@ -87,9 +87,7 @@ namespace alib5::eval{
     using Caller = std::function<Operation(ValueType & result,std::span<ValueType*> values)>;
  
     template<class CharT = char,class ValueType = double >
-    struct Context{
-
-    };
+    using Context = ConstanceStorage<CharT,ValueType>;
 
     template<class CharT = char,class ValueType = double >
     struct Executor{
@@ -109,7 +107,8 @@ namespace alib5::eval{
         struct Command{
             enum CmdType{
                 Run,
-                Store
+                Store,
+                Emplace
             };
             CmdType type;
             size_t index; // 保存图信息的位置
@@ -127,6 +126,7 @@ namespace alib5::eval{
         // 所以十分不建议在span<ValueType*> input中修改参数数值,理论上确实可以这么做
         // 但是这是未定义的
         std::pmr::vector<ValueType> caching;
+        // 对于包含左右缀的数值,也使用图来进行管理吧
         std::pmr::vector<ValueType> graph;
         std::pmr::vector<ValueType> constance;
         Context<CharT,ValueType> & context;
@@ -134,10 +134,25 @@ namespace alib5::eval{
 
         std::pmr::vector<ValueType*> execute_values;
 
-        Executor(Context<CharT,ValueType> & c):context(c){}
+        Executor(Context<CharT,ValueType> & c,std::pmr::memory_resource * allocator = ALIB5_DEFAULT_MEMORY_RESOURCE)
+        :context(c){}
 
         void add_cmd(call_t call,std::pmr::vector<Location> values){
             cmd.emplace_back(Command::Run,0,call,values);
+        }
+
+        void with_cacheline(call_t call,ValueType v){
+            caching.emplace_back(v);
+            cmd.emplace_back(Command::Run,0,call,{
+                {
+                    Location::Input,
+                    0     
+                },
+                {
+                    Location::Caching,
+                    v
+                }
+            });
         }
 
         // 需要保证在这段时间不操作caching,graph和constance,也不建议操作context
