@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 尝试做简单的数学解释器
  * @version 5.0
- * @date 2026/03/06
+ * @date 2026/03/18
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -12,5 +12,6 @@
 #ifndef ALIB5_AEVAL
 #define ALIB5_AEVAL
 #include <alib5/eval/kernel.h>
+#include <alib5/eval/executor.h>
 
 #endif

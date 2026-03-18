@@ -1,6 +1,7 @@
 #ifndef ALIB5_AEVAL_KERNEL
 #define ALIB5_AEVAL_KERNEL
 #include <alib5/eval/trie.h>
+#include <alib5/eval/executor.h>
 #include <deque>
 
 #ifndef ALIB5_EVAL_RULE_SPARSE
@@ -19,14 +20,6 @@ namespace alib5::eval{
         Middle ///< 一般的算术符号都这样,比如 a + b , a / b
     }; 
 
-    // 一般都返回true
-    enum Operation{
-        /// 已经处理完毕,转发单值
-        Processed,
-        /// 也许你对values进行了修改,但是无论如何,这里将转发values给下一个处理对象
-        Forward
-    };
-
     /// Rule应该做到尽量不更改
     template<class ValueType = double ,class CharT = char >
     struct ALIB5_API Rule{
@@ -37,7 +30,7 @@ namespace alib5::eval{
             /// 这个是rule自动填入的
             size_t id { 0 };
         public:
-            using call_t = std::function<Operation(ValueType & result,std::span<ValueType> values)>;
+            using call_t = Caller<CharT,ValueType>;
 
             std::pmr::basic_string<CharT> data;
             /// 允许的最大参数个数,传入size_t_max意思不言而喻就是变参了

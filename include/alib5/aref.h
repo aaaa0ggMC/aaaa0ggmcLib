@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 不会悬垂的比较安全的容器数据wrapper,Release下单次性能损失为0.3ns
  * @version 5.0
- * @date 2026/01/29
+ * @date 2026/03/18
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  ********************************************************
@@ -116,14 +116,14 @@ namespace alib5{
         }
     
         /// 获取当前的引用
-        inline auto& get(){
+        inline auto& get() {
             // debug下防止shrink
             panic_debug(!cont,"Root container is empty!");
             panic_debug(index >= cont->size(),"Index out of bounds!");
             return (*cont)[index];
         }
 
-        inline auto* ptr(){
+        inline auto* ptr() {
             // debug下防止shrink
             panic_debug(!cont,"Root container is empty!");
             panic_debug(index >= cont->size(),"Index out of bounds!");
@@ -136,55 +136,65 @@ namespace alib5{
         }
 
         /// 尝试调用引用的赋值
-        template<class U> inline auto operator=(U&& val) 
-            -> decltype((*cont)[index] = std::forward<U>(val))
-        {
-            return get() = std::forward<U>(val);
+        #define ALIB5_DEFINE_OP(op) \
+            template<class U> \
+            inline auto operator op(U&& val) \
+                requires requires { get() op std::forward<U>(val); } \
+            { \
+                return get() op std::forward<U>(val); \
+            }
+
+        ALIB5_DEFINE_OP(==);
+        ALIB5_DEFINE_OP(<=>);
+
+        ALIB5_DEFINE_OP(=);
+        ALIB5_DEFINE_OP(+=);
+        ALIB5_DEFINE_OP(-=);
+        ALIB5_DEFINE_OP(*=);
+        ALIB5_DEFINE_OP(/=);
+        ALIB5_DEFINE_OP(%=);
+        ALIB5_DEFINE_OP(&=);
+        ALIB5_DEFINE_OP(|=);
+        ALIB5_DEFINE_OP(^=);
+        ALIB5_DEFINE_OP(<<=);
+        ALIB5_DEFINE_OP(>>=);
+
+        ALIB5_DEFINE_OP(+);
+        ALIB5_DEFINE_OP(-);
+        ALIB5_DEFINE_OP(*);
+        ALIB5_DEFINE_OP(/);
+        ALIB5_DEFINE_OP(%);
+
+        ALIB5_DEFINE_OP(&);
+        ALIB5_DEFINE_OP(|);
+        ALIB5_DEFINE_OP(^);
+        ALIB5_DEFINE_OP(<<);
+        ALIB5_DEFINE_OP(>>);
+
+        #undef ALIB5_DEFINE_OP
+        inline auto operator++()    requires requires { ++get(); } { return ++get(); }
+        inline auto operator++(int) requires requires { get()++; } { return get()++; }
+        inline auto operator--()    requires requires { --get(); } { return --get(); }
+        inline auto operator--(int) requires requires { get()--; } { return get()--; }
+
+        inline RefWrapper& next_ref() {
+            return set_index(index + 1);
         }
 
-        /// 增加index
-        inline RefWrapper<Cont> operator+(int offset){
+        inline RefWrapper& prev_ref() {
+            return set_index(index - 1);
+        }
+
+        inline RefWrapper& advance_ref(int offset) {
+            return set_index(index + offset);
+        }
+
+        [[nodiscard]] inline RefWrapper offset_ref(int offset) const {
             auto t = *this;
             t.set_index(index + offset);
             return t;
         }
 
-        /// 减少index
-        inline RefWrapper<Cont> operator-(int offset){
-            auto t = *this;
-            t.set_index(index - offset);
-            return t;
-        }
-
-        inline RefWrapper<Cont>& operator+=(int offset){
-            return set_index(index + offset);
-        }
-
-        inline RefWrapper<Cont>& operator-=(int offset){
-            return set_index(index - offset);
-        }
-
-        inline RefWrapper<Cont>& operator++(){
-            return set_index(index + 1);
-        }
-
-        inline RefWrapper<Cont>& operator--(){
-            return set_index(index - 1);
-        }
-
-        inline RefWrapper<Cont> operator++(int){
-            auto ret = *this;
-            set_index(index + 1);
-            return ret;
-        }
-        
-        inline RefWrapper<Cont> operator--(int){
-            auto ret = *this;
-            set_index(index - 1);
-            return ret;
-        }
-
-        /// 手动设置index
         inline RefWrapper<Cont>& set_index(size_t index){
             panic_debug(!cont,"Root container is empty!");
             panic_debug(index >= cont->size(),"Index out of bounds!");
@@ -192,9 +202,8 @@ namespace alib5{
             return *this;
         }
 
-        /// 手动设置
-        inline auto& operator()(size_t index){
-            return set_index(index);
+        inline size_t get_index(){
+            return index;
         }
     };
 

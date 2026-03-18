@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 线性存储类，目前使用vector，后期可以变成sparse_set啥的
  * @version 0.1
- * @date 2026/03/05
+ * @date 2026/03/18
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -169,6 +169,7 @@ namespace alib5::ecs::detail{
         //// 支持ref直接引用 ////
         /// 引用类型
         using reference = T&;
+        using const_reference = const T&;
         /// 基础类型
         using value_type = T;
         /// reserve数据
@@ -185,10 +186,19 @@ namespace alib5::ecs::detail{
                 return data[index];
             }
         }
+        inline const_reference operator[](size_t index) const {
+            if constexpr(requires{data.find(index);}) {
+                auto it = data.find(index);
+                panic_if(it == data.end(), "Out of bounds!");
+                return it->second;
+            }else{
+                return data[index];
+            }
+        }
         /// 获取当前的数据量
-        inline size_t size(){return data.size();}
+        inline size_t size() const {return data.size();}
         /// 获取当前是否为空
-        inline bool empty(){return data.empty();}
+        inline bool empty() const {return data.empty();}
 
         /// 清除当前容器
         inline void clear(){
