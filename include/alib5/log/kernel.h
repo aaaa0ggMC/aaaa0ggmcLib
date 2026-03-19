@@ -2,7 +2,7 @@
 * @brief 与日志有关的函数库
 * @author aaaa0ggmc
 * @last-date 2025/04/04
-* @date 2026/03/15 
+* @date 2026/03/19 
 * @version 5.0
 * @copyright Copyright(C)2025
 ********************************
@@ -244,6 +244,16 @@ namespace alib5{
         /// @brief LogFactory配置
         LogFactoryConfig cfg;
 
+        /// @brief 初始化context信息的获取
+        auto& get_msg_str_alloc(){
+            return logger.msg_str_alloc;
+        }
+        auto& get_tag_alloc(){
+            return logger.tag_alloc;
+        }
+        auto& get_msg_config(){
+            return cfg.msg;
+        }
 
         /// @brief 初始化logger
         /// @param binded     绑定到的日志核心
@@ -329,7 +339,7 @@ namespace alib5{
         /// @brief 提供流式输出，采用默认的level,这里构造了亡值链，通过RVO减少一次copy
         template<class T> inline StreamedContext<LogFactory> operator<<(T && t){
             bool valid = !cfg.level_should_keep || cfg.level_should_keep(cfg.def_level);
-            return StreamedContext<LogFactory>(cfg.def_level,*this,valid) << t;
+            return StreamedContext<LogFactory>(cfg.def_level,*this,valid) << std::forward<T>(t);
         } 
 
         /// @brief 用于compact

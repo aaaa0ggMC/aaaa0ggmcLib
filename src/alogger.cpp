@@ -1,10 +1,145 @@
 #include <alib5/alogger.h>
+#include <climits>
+#include <stacktrace>
 
 using namespace alib5;
 
 thread_local std::string LogMsg::sdate;
 thread_local std::string LogMsg::scomposed;
 std::mutex lot::Console::console_lock;
+
+void log_stacktrace::write_to_log(std::pmr::string & str){
+    int index = -1;
+    for(auto & entry : std::stacktrace::current()){
+        index++;
+        if(index < skip_depth)continue;
+        if(entry.source_file().empty() && entry.source_line() == 0)continue;
+        if(skip_prompt && 
+           !skip_prompt_str.empty() && 
+           entry.source_file().find(skip_prompt_str) != std::string::npos
+        )continue; // skip c++ stacktrace
+
+        str +=  "  ";
+        str += ext::to_string<size_t,false>(index - skip_depth);
+        str += "# ";
+        str += entry.source_file();
+        str += ":";
+        str += ext::to_string<size_t,false>(entry.source_line());
+        str += " at ";
+        str += entry.description();
+        if(auto_newline)str += "\n";
+    }
+}
+
+void log_bin::write_to_log(std::pmr::string & target){
+    constexpr std::string_view s_bin = "01"; 
+    constexpr std::string_view s_oct = "01234567"; 
+    constexpr std::string_view s_hex_lower = "0123456789abcdef"; 
+    constexpr std::string_view s_hex_upper = "0123456789ABCDEF";
+    std::string_view s_hex = config.capital ? s_hex_upper : s_hex_lower;
+
+    if(estimated_length){
+        size_t bytes_per_unit = 1;
+        if(config.fmt == Bin) bytes_per_unit = 8;
+        else if(config.fmt == Hex) bytes_per_unit = 2;
+        else if(config.fmt == Oct) bytes_per_unit = 3;
+
+        *estimated_length = size * bytes_per_unit;
+        if(config.split_when > 0){
+            *estimated_length += (*estimated_length / config.split_when) * config.split_str.size();
+        }
+    }
+
+    size_t current_len = 0;
+    size_t cycle_len = 0;
+    unsigned char * cursor = (unsigned char*)data;
+    size_t processed_bytes = 0;
+
+    auto check_split = [&]() {
+        if (config.split_when > 0 && ++cycle_len >= config.split_when){
+            cycle_len = 0;
+            for(char c : config.split_str){
+                if(current_len < max_length){
+                    target.push_back(c);
+                    current_len++;
+                }
+            }
+        }
+    };
+
+    while(processed_bytes < size && current_len < max_length){
+        unsigned char ch = *cursor;
+
+        switch(config.fmt){
+            case Hex: {
+                target.push_back(s_hex[(ch >> 4) & 0x0F]);
+                current_len++;
+                check_split();
+
+                target.push_back(s_hex[ch & 0x0F]);
+                current_len++;
+                check_split();
+                break;
+            }
+            case Oct: {
+                unsigned char oct_parts[3] = {
+                    (unsigned char)((ch >> 6) & 0x03),
+                    (unsigned char)((ch >> 3) & 0x07),
+                    (unsigned char)(ch & 0x07)
+                };
+                for(int i=0; i<3; ++i){
+                    target.push_back(s_oct[oct_parts[i]]);
+                    current_len++;
+                    check_split();
+                }
+                break;
+            }
+            case Bin: {
+                for(int i = CHAR_BIT - 1; i >= 0; --i){
+                    target.push_back(s_bin[(ch >> i) & 1]);
+                    current_len++;
+                    check_split();
+                }
+                break;
+            }
+        }
+        /// @note 实现Base32/Base64的时候注意这里要按照要求加上去
+        cursor++;
+        processed_bytes++;
+    }
+    if(parent_ml)*parent_ml = current_len;
+}
+
+bool log_rate::Info::check(){
+    switch(type){
+    case Rate:{
+        if(times_per_second > 0){
+            double all = clk.get_all();
+            double interval = 1000.0 / times_per_second;
+            double last = last_all.load(std::memory_order::relaxed);
+
+            if(all-last >= interval){
+                if(last_all.compare_exchange_strong(last, all, std::memory_order_relaxed)){
+                    return true;
+                }
+            }
+            return false;
+        }else return true;
+    }
+    case Once:
+        if(printed.load(std::memory_order::relaxed)){
+            return false;
+        }
+        {
+            bool expected = false;
+            if(printed.compare_exchange_strong(expected,true,std::memory_order::release)){
+                return true;
+            }
+        }
+        return false;
+    }
+    return true;
+}
 
 Logger& alib5::__get_internal_logger(){
     static Logger logger (

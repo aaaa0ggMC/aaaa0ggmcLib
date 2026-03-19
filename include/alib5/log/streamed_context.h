@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 流式输出处控制，主持write_to_log(类函数&全局函数)编译期注入
  * @version 0.1
- * @date 2026/03/16
+ * @date 2026/03/19
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -96,9 +96,9 @@ namespace alib5{
         /// @brief 初始化字符串用的内存池以及level
         inline StreamedContext(int level,LogFactory & fac,bool valid = true)
         :factory(fac)
-        ,cache_str(factory.logger.msg_str_alloc)
-        ,msg_cfg(fac.cfg.msg)
-        ,tags(fac.logger.tag_alloc){
+        ,cache_str(fac.get_msg_str_alloc())
+        ,msg_cfg(fac.get_msg_config())
+        ,tags(fac.get_tag_alloc()){
             this->level = level;
             fmt_str = "";
             fmt_tmp = false;
@@ -135,11 +135,23 @@ namespace alib5{
         template<class T>
         StreamedContext&& operator<<(log_omit<T> && val) && {
             if(!context_valid)return std::move(*this);
+
+            constexpr bool limited = CanLimitLog<std::decay_t<T>>;
+            size_t estimated_length = 0;
+            if constexpr(limited){
+                std::forward<T>(val.v).limit_log(estimated_length,val.max_length);
+            }
+
             // 记录当前长度
             size_t clen = cache_str.size();
             std::move(*this) << std::forward<T>(val.v);
             // 记录现在长度
-            size_t clen2 = cache_str.size();
+            size_t clen2 = 0;
+            if constexpr(limited){
+                clen2 = std::max(cache_str.size(),clen + estimated_length);
+            }else{
+                clen2 = cache_str.size();
+            }
             // 进行截断
             if(clen + val.max_length < clen2){
                 cache_str.resize(clen + val.max_length);

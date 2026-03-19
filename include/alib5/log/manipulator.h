@@ -14,8 +14,9 @@
 #include <alib5/log/base_config.h>
 #include <alib5/autil.h>
 #include <alib5/adebug.h>
+#include <alib5/aclock.h>
 #include <source_location>
-#include <climits>
+#include <list>
 
 namespace alib5{
     /// @brief 仅用来识别日志终止
@@ -30,8 +31,85 @@ namespace alib5{
 
     /// @brief 表示你的manipulator等类似对象支持中途截断从而减少IO输出
     template<class T>
-    concept CanLimitLog = requires(T&&t,size_t & estimated_size,size_t limit){
-        t.limit_log(estimated_size,limit);
+    concept CanLimitLog = requires(T&&t,size_t & estimated_size,size_t & max_length){
+        t.limit_log(estimated_size,max_length);
+    };
+
+    /// @brief stacktrace支持
+    struct ALIB5_API log_stacktrace{
+        size_t skip_depth;
+        bool skip_prompt;
+        std::string_view skip_prompt_str;
+        bool auto_newline;
+
+        log_stacktrace(size_t skip_depth = 2,bool skip_prompt = true,std::string_view skip_prompt_str = "c++",bool auto_newline = true)
+        :skip_depth(skip_depth)
+        ,skip_prompt(skip_prompt)
+        ,skip_prompt_str(skip_prompt_str)
+        ,auto_newline(auto_newline){}
+
+        void write_to_log(std::pmr::string & str);
+    };
+
+    /// @brief 限制单条日志输出次数
+    struct ALIB5_API log_rate{
+        struct ALIB5_API Info{
+            enum Type{
+                Rate,
+                Once
+            };
+            Type type { Rate };
+            std::atomic<bool> printed;
+            std::atomic<double> last_all;
+            double times_per_second { -1 };
+            alib5::Clock clk;
+
+            auto& set_type(Type t){
+                type = t;
+                return *this;
+            }
+
+            auto & set_rate(double times_per_sec){
+                times_per_second = times_per_sec;
+                return *this;
+            }
+
+            bool check();
+        };
+
+        struct ALIB5_API context{
+            std::pmr::list<Info> info;
+            // 不直接使用是为了防止mapping rehash
+            std::pmr::unordered_map<size_t,Info*> mapping;
+            std::mutex mutex;
+
+            context(std::pmr::memory_resource * allocator = ALIB5_DEFAULT_MEMORY_RESOURCE)
+            :info(allocator)
+            ,mapping(allocator){}
+
+            Info & get(size_t id){
+                std::lock_guard<std::mutex> lock(mutex);
+                auto it = mapping.find(id);
+                if(it == mapping.end()){
+                    auto & target = info.emplace_back();
+                    mapping.emplace(id,&target);
+                    return target;
+                }else return *it->second;
+            }            
+        };
+        Info& info;
+
+        log_rate(size_t id,context & context)
+        :info(context.get(id)){}
+
+        log_rate(Info & i_info)
+        :info(i_info){}
+
+        template<class T>
+        auto self_forward(T && context) -> decltype(std::forward<T>(context)) {
+            if(!info.check())context.context_valid = false;
+            return std::forward<T>(context);
+        }
     };
 
     /// @brief 临时存储的东西
@@ -85,95 +163,15 @@ namespace alib5{
         size_t size;        
 
         size_t* estimated_length { nullptr };
+        size_t * parent_ml { nullptr };
         size_t max_length { std::variant_npos };
-        void limit_log(size_t & est,size_t mx){
-            max_length = mx;
+        void limit_log(size_t & est,size_t & ml){
+            max_length = ml;
             estimated_length = &est;
+            parent_ml = &ml;
         }
 
-        void write_to_log(std::pmr::string & target){
-            constexpr std::string_view s_bin = "01"; 
-            constexpr std::string_view s_oct = "01234567"; 
-            constexpr std::string_view s_hex_lower = "0123456789abcdef"; 
-            constexpr std::string_view s_hex_upper = "0123456789ABCDEF";
-            std::string_view s_hex = config.capital ? s_hex_upper : s_hex_lower;
-
-            if(estimated_length){
-                size_t bytes_per_unit = 1;
-                if(config.fmt == Bin) bytes_per_unit = 8;
-                else if(config.fmt == Hex) bytes_per_unit = 2;
-                else if(config.fmt == Oct) bytes_per_unit = 3;
-
-                *estimated_length = size * bytes_per_unit;
-                if(config.split_when > 0){
-                    *estimated_length += (*estimated_length / config.split_when) * config.split_str.size();
-                }
-            }
-
-            size_t current_len = 0;
-            size_t cycle_len = 0;
-            unsigned char * cursor = (unsigned char*)data;
-            size_t processed_bytes = 0;
-
-            auto check_split = [&]() {
-                if (config.split_when > 0 && ++cycle_len >= config.split_when){
-                    cycle_len = 0;
-                    for(char c : config.split_str){
-                        if(current_len < max_length){
-                            target.push_back(c);
-                            current_len++;
-                        }
-                    }
-                }
-            };
-
-            while(processed_bytes < size && current_len < max_length){
-                unsigned char ch = *cursor;
-
-                switch(config.fmt){
-                    case Hex: {
-                        target.push_back(s_hex[(ch >> 4) & 0x0F]);
-                        current_len++;
-                        check_split();
-
-                        if(current_len < max_length) {
-                            target.push_back(s_hex[ch & 0x0F]);
-                            current_len++;
-                            check_split();
-                        }
-                        break;
-                    }
-                    case Oct: {
-                        unsigned char oct_parts[3] = {
-                            (unsigned char)((ch >> 6) & 0x03),
-                            (unsigned char)((ch >> 3) & 0x07),
-                            (unsigned char)(ch & 0x07)
-                        };
-                        for(int i=0; i<3; ++i){
-                            if(current_len < max_length){
-                                target.push_back(s_oct[oct_parts[i]]);
-                                current_len++;
-                                check_split();
-                            }
-                        }
-                        break;
-                    }
-                    case Bin: {
-                        for(int i = CHAR_BIT - 1; i >= 0; --i){
-                            if(current_len < max_length){
-                                target.push_back(s_bin[(ch >> i) & 1]);
-                                current_len++;
-                                check_split();
-                            }
-                        }
-                        break;
-                    }
-                }
-                /// @note 实现Base32/Base64的时候注意这里要按照要求加上去
-                cursor++;
-                processed_bytes++;
-            }
-        }
+        void write_to_log(std::pmr::string & target);
 
         template<class T>
         log_bin(T && val,cfg c = cfg()):data(&val),size(sizeof(val)),config(c){}

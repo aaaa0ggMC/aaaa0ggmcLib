@@ -1,7 +1,7 @@
 /**@file aclock.h
 * @brief 时钟库，提供实用计时类包装
 * @author aaaa0ggmc
-* @date 2026/03/04
+* @date 2026/03/19
 * @version 5.0
 * @copyright Copyright(c) 2026
 */
@@ -82,7 +82,7 @@ namespace alib5{
         }
 
         /// 获取当前时间信息 {all, offset}
-        inline std::pair<double,double> now(){
+        inline std::pair<double,double> now() const {
             if(m_status == Stopped)return {0.0,0.0};
 
             auto now_ns = clock_source::now().time_since_epoch();
@@ -110,12 +110,12 @@ namespace alib5{
         }
 
         /// 获取总有效时长
-        inline double get_all(){
+        inline double get_all() const {
             return now().first;
         }
 
         /// 获取偏移时长
-        inline double get_offset(){
+        inline double get_offset() const {
             return now().second;
         }
 
@@ -136,6 +136,7 @@ namespace alib5{
         /// 测试是否触发
         /// @param reset_if_succeeds 触发后是否自动重置基准时间
         inline bool test(bool reset_if_succeeds = true){
+            if(duration < 0)return true;
             if(!m_clock)return false;
             double now_time = m_clock->get_all();
             if(now_time - m_recorded_time >= duration){
