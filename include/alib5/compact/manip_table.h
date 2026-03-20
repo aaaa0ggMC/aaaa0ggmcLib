@@ -1,3 +1,13 @@
+/**
+ * @file manip_table.h
+ * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
+ * @brief 一个简单的表格系统,用于logger显示表格数据,支持多行,颜色,嵌套,对齐等功能
+ * @version 5.0
+ * @date 2026-03-20
+ * 
+ * @copyright Copyright (c) 2026
+ * 
+ */
 #ifndef ALIB5_LOG_MANIP_TABLE
 #define ALIB5_LOG_MANIP_TABLE
 #include <alib5/autil.h>
@@ -19,6 +29,19 @@ namespace alib5{
     /// 默认的计算字符串的方式,目前支持英文
     StringCalcInfo ALIB5_API _default_string_calc(std::string_view sv);
 
+    /// 对齐
+    enum class ColAlign{
+        Left,
+        Center,
+        Right
+    };
+    enum class RowAlign{
+        Top,
+        Center,
+        Bottom
+    }; 
+
+    struct log_table;
     namespace detail{
         /// Mock LogFactory用于复用context的格式化能力
         struct LogTableMockFactory{
@@ -46,7 +69,12 @@ namespace alib5{
             // 十分不建议直接使用context
             StreamedContext<detail::LogTableMockFactory> context;
             StringCalcInfo info;
+
             size_t cached_index { 0 };
+            size_t write_index { 0 };
+
+            std::optional<ColAlign> col_align;
+            std::optional<RowAlign> row_align;
 
             Item(detail::LogTableMockFactory & fac)
             :context(0,fac){}
@@ -85,20 +113,20 @@ namespace alib5{
         >;
 
         struct Operator{
-            using ctx_t = StreamedContext<LogFactory> &;
-            ctx_t context;
-            data_t & data;
-            detail::LogTableMockFactory factory;
+        private:
+            friend class alib5::log_table;
 
+            data_t & data;
+            std::optional<detail::LogTableMockFactory> factory;
             size_t top { std::variant_npos };
             size_t left { std::variant_npos };
             size_t right { 0 };
             size_t bottom { 0 };
+            bool view_fixed { false };
+        public:
 
-            Operator(ctx_t context,data_t & data)
-            :context(context)
-            ,data(data)
-            ,factory(context.factory){}
+            Operator(data_t & data)
+            :data(data){}
             
             struct Row{
             private:
@@ -122,9 +150,34 @@ namespace alib5{
                     detail::Item& get(){
                         auto [it, _] = op.data.try_emplace(
                             Pos{.row = row, .col = col}, 
-                            op.factory
+                            *op.factory
                         );
                         return it->second;
+                    }
+
+                    auto& col_align(ColAlign align){
+                        get().col_align.emplace(align);
+                        return *this;
+                    }
+
+                    auto& row_align(RowAlign align){
+                        get().row_align.emplace(align);
+                        return *this;
+                    }
+                    
+                    void clear(){
+                        auto & v = get();
+                        v.context.tags.clear();
+                        v.context.cache_str.clear();
+                        v.context.fmt_tmp = true;
+                        v.context.fmt_str = "";
+                    }
+
+                    template<IsStringLike T>
+                    auto& operator=(T && val){
+                        clear();
+                        get().context.cache_str = std::string_view(val);
+                        return *this;
                     }
 
                     template<class T>
@@ -134,16 +187,29 @@ namespace alib5{
                 };
 
                 Col operator[](uint32_t i){
-                    if(i < op.left)op.left = i;
-                    if(i > op.right)op.right = i;
+                    if(!op.view_fixed){
+                        if(i < op.left)op.left = i;
+                        if(i > op.right)op.right = i;
+                    }
                     return Col(row,i,op);
                 }
             };
 
             Row operator[](uint32_t i){
-                if(i < top)top = i;
-                if(i > bottom)bottom = i;
+                if(!view_fixed){
+                    if(i < top)top = i;
+                    if(i > bottom)bottom = i;
+                }
                 return Row(i,*this);
+            }
+
+            void set_view(uint32_t row,uint32_t col,uint32_t row_l,uint32_t col_l){
+                top = row;
+                left = col;
+                right = col + col_l;
+                bottom = row + row_l;
+
+                view_fixed = true;
             }
         };
     }
@@ -158,36 +224,37 @@ namespace alib5{
         struct cfg{
             /// 每个表的元素中间的分割符号
             bool enable_mid_sep { true };
-            char mid_column_sep { '|' };
+            std::string mid_column_sep { '|' };
             /// 单独的行分割
             bool enable_line_sep { true };
-            char line_sep { '-' }; ///< 每个表左侧元素的分割符号
-            char mid_line_joint { '+' }; ///< mid_sep与line_sep相交时的字符
+            std::string line_sep { '-' }; ///< 每个表左侧元素的分割符号
+            std::string mid_line_joint { '+' }; ///< mid_sep与line_sep相交时的字符
             /// 左右侧border
             bool enable_lborder { true };
-            char lborder { '|' };
-            char lline_joint { '+' };
+            std::string lborder { '|' };
+            std::string lline_joint { '+' };
             
             bool enable_rborder { true };
-            char rborder { '|' };
-            char rline_joint { '+' };
+            std::string rborder { '|' };
+            std::string rline_joint { '+' };
             /// 顶部border
-            char top_border { '-' };
-            char top_joint { '+' };
-            char top_left { '+' };
-            char top_right { '+' };
+            std::string top_border { '-' };
+            std::string top_joint { '+' };
+            std::string top_left { '+' };
+            std::string top_right { '+' };
             /// 底部border
             bool enable_bottom_border { true };
-            char bottom_border { '-' };
-            char bottom_joint { '+' };
-            char bottom_left { '+' };
-            char bottom_right { '+' };
-
+            std::string bottom_border { '-' };
+            std::string bottom_joint { '+' };
+            std::string bottom_left { '+' };
+            std::string bottom_right { '+' };
             /// 基础padding
             size_t base_padding { 1 };
-
             /// 最后换行
             bool wrap_new_line { false };
+
+            ColAlign col_align { ColAlign::Left };
+            RowAlign row_align { RowAlign::Top };
 
             cfg(){}
         };
@@ -205,7 +272,15 @@ namespace alib5{
             std::pmr::memory_resource * allocator = ALIB5_DEFAULT_MEMORY_RESOURCE
         );
 
+        /// 支持标准版本以及Mock版本
         StreamedContext<LogFactory>&& self_forward(StreamedContext<LogFactory> && ctx);
+        StreamedContext<detail::LogTableMockFactory>&& self_forward(StreamedContext<detail::LogTableMockFactory> && ctx);
+
+        /// 具体实现
+        template<class Lg>
+        StreamedContext<Lg>&& _self_forward(StreamedContext<Lg> && ctx);
+    
+        static ALIB5_API cfg unicode_rounded();
     };
 
 }
