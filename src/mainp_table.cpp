@@ -97,3 +97,60 @@ log_table::cfg log_table::unicode_rounded() {
     
     return c;
 }
+
+log_table::cfg log_table::minimal() {
+    cfg c;
+    // 1. 关闭侧边和底部物理开关
+    c.enable_lborder = false;
+    c.enable_rborder = false;
+    c.enable_bottom_border = false;
+    c.enable_line_sep = true; // 依然保留行分割线，类似 Markdown 效果
+
+    // 2. 清除顶部组件 (设为空或空格，防止 + 出现)
+    c.top_border = " ";
+    c.top_left = " ";
+    c.top_right = " ";
+    c.top_joint = " ";
+
+    // 3. 中间组件优化
+    c.mid_column_sep = " ";   // 列之间用空格分隔，不显示竖线
+    c.line_sep = "─";         // 行之间用细线
+    c.mid_line_joint = "─";   // 关键：交汇点也要用横线填充，否则线会断开
+    c.lline_joint = "─";      // 左侧不显示 +
+    c.rline_joint = "─";      // 右侧不显示 +
+
+    // 4. 底部组件清理 (虽然开关关了，但为了严谨也清空)
+    c.bottom_border = " ";
+    c.bottom_left = " ";
+    c.bottom_right = " ";
+    c.bottom_joint = " ";
+
+    // 5. 间距补偿：没有竖线时，增加 padding 会更美观
+    c.base_padding = 2; 
+    
+    return c;
+}
+
+log_table::cfg log_table::double_line(){
+    cfg c;
+    c.lborder = "║"; c.rborder = "║"; c.mid_column_sep = "║";
+    c.line_sep = "═"; c.top_border = "═"; c.bottom_border = "═";
+    
+    c.top_left = "╔"; c.top_right = "╗"; c.top_joint = "╦";
+    c.bottom_left = "╚"; c.bottom_right = "╝"; c.bottom_joint = "╩";
+    
+    c.lline_joint = "╠"; c.rline_joint = "╣"; c.mid_line_joint = "╬";
+    return c;
+}
+
+log_table::cfg log_table::modern_dot(){
+    cfg c;
+    c.lborder = "┋"; c.rborder = "┋"; c.mid_column_sep = "┊";
+    c.line_sep = "┈"; c.top_border = "━"; c.bottom_border = "━";
+    
+    c.top_left = "┏"; c.top_right = "┓"; c.top_joint = "┳";
+    c.bottom_left = "┗"; c.bottom_right = "┛"; c.bottom_joint = "┻";
+    
+    c.lline_joint = "┣"; c.rline_joint = "┫"; c.mid_line_joint = "╋";
+    return c;
+}

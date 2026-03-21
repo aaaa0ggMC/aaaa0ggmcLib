@@ -15,6 +15,7 @@
 #include <alib5/log/streamed_context.h>
 #include <alib5/log/kernel.h>
 #include <map>
+#include <cstdlib>
 
 namespace alib5{
     /// 计算一个字符串所占用的行/列大小
@@ -69,9 +70,7 @@ namespace alib5{
             // 十分不建议直接使用context
             StreamedContext<detail::LogTableMockFactory> context;
             StringCalcInfo info;
-
-            size_t cached_index { 0 };
-            size_t write_index { 0 };
+            bool calced = false;
 
             std::optional<ColAlign> col_align;
             std::optional<RowAlign> row_align;
@@ -98,6 +97,10 @@ namespace alib5{
                 uint32_t row;
                 uint32_t col;
             };
+
+            auto operator<=>(const Pos & a){
+                return std::tie(row,col) <=> std::tie(a.row,a.col);
+            }
         };
         /// 位置比较函数
         struct PosCompare{
@@ -123,8 +126,9 @@ namespace alib5{
             size_t right { 0 };
             size_t bottom { 0 };
             bool view_fixed { false };
-        public:
+            std::optional<Item> default_value;
 
+        public:
             Operator(data_t & data)
             :data(data){}
             
@@ -148,11 +152,17 @@ namespace alib5{
                     :row(row),col(col),op(op){}
                 
                     detail::Item& get(){
-                        auto [it, _] = op.data.try_emplace(
-                            Pos{.row = row, .col = col}, 
-                            *op.factory
-                        );
-                        return it->second;
+                        if(row == std::numeric_limits<uint32_t>::max() ||
+                           col == std::numeric_limits<uint32_t>::max()
+                        ){
+                            return op.get_placeholder_item();
+                        }else{
+                            auto [it, _] = op.data.try_emplace(
+                                Pos{.row = row, .col = col}, 
+                                *op.factory
+                            );
+                            return it->second;
+                        }
                     }
 
                     auto& col_align(ColAlign align){
@@ -211,6 +221,48 @@ namespace alib5{
 
                 view_fixed = true;
             }
+
+            void swap_rows(uint32_t row_a, uint32_t row_b){
+                if(row_a == row_b)return;
+                uint32_t start_row = std::min(row_a, row_b);
+                uint32_t end_row = std::max(row_a, row_b);
+
+                if(!view_fixed){
+                    top = std::min({(uint32_t)top, row_a, row_b});
+                    bottom = std::max({(uint32_t)bottom, row_a, row_b});
+                }
+
+                std::vector<data_t::node_type> nodes_a;
+                std::vector<data_t::node_type> nodes_b;
+                for(auto it = data.lower_bound(Pos{.row = start_row, .col = 0}); 
+                    it != data.end() && it->first.row <= end_row;){
+                    if(it->first.row == row_a){
+                        auto node = data.extract(it++);
+                        node.key().row = row_b;
+                        nodes_a.push_back(std::move(node));
+                    }else if(it->first.row == row_b) {
+                        auto node = data.extract(it++);
+                        node.key().row = row_a;
+                        nodes_b.push_back(std::move(node));
+                    }else{
+                        ++it;
+                    }
+                }
+                for(auto& n : nodes_a) data.insert(std::move(n));
+                for(auto& n : nodes_b) data.insert(std::move(n));
+            }
+
+            Row::Col placeholder(){
+                return Row::Col(std::numeric_limits<uint32_t>::max(),0,*this);
+            }
+
+            Item& get_placeholder_item(){
+                // factory会在lambda中构建
+                if(!default_value){
+                    default_value.emplace(*factory);
+                }
+                return *default_value;
+            }
         };
     }
 
@@ -252,7 +304,6 @@ namespace alib5{
             size_t base_padding { 1 };
             /// 最后换行
             bool wrap_new_line { false };
-
             ColAlign col_align { ColAlign::Left };
             RowAlign row_align { RowAlign::Top };
 
@@ -281,6 +332,9 @@ namespace alib5{
         StreamedContext<Lg>&& _self_forward(StreamedContext<Lg> && ctx);
     
         static ALIB5_API cfg unicode_rounded();
+        static ALIB5_API cfg minimal();
+        static ALIB5_API cfg double_line();
+        static ALIB5_API cfg modern_dot();
     };
 
 }

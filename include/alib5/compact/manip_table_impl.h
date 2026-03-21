@@ -55,34 +55,101 @@ namespace alib5{
         
         /// 分配大小计算格子
         if(op.right < op.left || op.bottom < op.top)return std::move(ctx); // 空表
+        // 检查默认值
+        if(op.default_value){
+            op.default_value->info =  calc(op.default_value->view());
+        }
+
+        struct Cache{
+            size_t cached_index { 0 };
+            size_t write_index { 0 };
+        };
+
+        struct DataIterator{
+            Pos pos;
+            const Item * item;
+        }; 
+
         std::vector<size_t> col_lengths(access_col(op.right) + 1,0);
         std::vector<size_t> row_lengths(access_row(op.bottom) + 1,0);
         std::vector<
-            std::vector<typename data_t::iterator>
+            std::vector<DataIterator>
         > iterators;
+
+        std::map<Pos,Cache,PosCompare> cache;
+        auto get_cache = [&cache](Pos p)->Cache&{
+            return cache.try_emplace(p,Cache()).first->second;
+        };
+
         
         /// 第一次遍历,获取边界
         {
-            size_t old_row = op.data.empty() ? std::variant_npos : op.data.begin()->first.row;
-            
+            size_t old_row = op.top;
+            size_t old_col = op.left;
             auto * focus = &iterators.emplace_back();
-            for(auto it = op.data.begin();it != op.data.end();++it){
-                auto & [pos,data] = *it;
-                if(old_row != pos.row){
-                    focus = &iterators.emplace_back();
-                    old_row = pos.row;
-                }
-                focus->emplace_back(it);
 
+            auto rewrite_length = [&](Pos pos,Item & data){
                 auto & d_col = col_lengths[access_col(pos.col)];
                 auto & d_row = row_lengths[access_row(pos.row)];
-                data.info = calc(data.view());
                 if(data.info.max_cols > d_col){
                     d_col = data.info.max_cols; 
                 }
                 if(data.info.lines.size() > d_row){
                     d_row = data.info.lines.size();
                 }
+            };
+
+            auto fill_defaults = [&](Pos to) {
+                if(old_row == to.row && old_col == to.col) return;
+                for(uint32_t r = old_row; r <= to.row; ++r){
+                    uint32_t c_start = 0;
+                    uint32_t c_end = (r == to.row) ? to.col : (uint32_t)op.right + 1;
+
+                    if(r == old_row){
+                        c_start = old_col + 1;
+                        if(c_start > op.right){
+                            if(r < to.row){
+                                focus = &iterators.emplace_back();
+                            }
+                            continue;
+                        }
+                    }else c_start = op.left;
+
+                    for(uint32_t c = c_start; c < c_end; ++c){
+                        Pos p{ .row = r, .col = c };
+                        focus->emplace_back(p, &(*op.default_value));
+                        rewrite_length(p, *op.default_value);
+                    }
+
+                    if(r < to.row){
+                        focus = &iterators.emplace_back();
+                    }
+                }
+
+                old_row = to.row;
+                old_col = to.col;
+            };
+
+            for(auto it = op.data.begin();it != op.data.end();++it){
+                auto & [pos,data] = *it;
+                if(op.default_value){
+                    fill_defaults(pos);
+                }else if(old_row != pos.row){
+                    focus = &iterators.emplace_back();
+                }
+                focus->emplace_back(pos,&data);
+                old_row = pos.row;
+                old_col = pos.col;
+
+                data.info = calc(data.view());
+                rewrite_length(pos,data);
+            }
+            // 填充尾部
+            if(op.default_value){
+                fill_defaults(Pos{
+                    .row = (uint32_t)op.bottom,
+                    .col = (uint32_t)op.right + 1
+                });
             }
         }
 
@@ -125,7 +192,7 @@ namespace alib5{
         for(size_t i = 0;i < iterators.size();++i){
             auto & cont = iterators[i];
             // 每一行都是有效行,因此添加换行
-            size_t row_index = cont[0]->first.row;
+            size_t row_index = cont[0].pos.row;
 
             mid_sep_positions.clear();
             bool generated_mid_sep = false;
@@ -134,12 +201,12 @@ namespace alib5{
                     // 写入rborder
                     push('\n');                      
                 }
-                size_t old_col = cont[0]->first.col;
+                size_t old_col = cont[0].pos.col;
 
                 /// 开始写入,加入lborder
                 if(config.enable_lborder)push(config.lborder,1);
 
-                auto end_iter = *(cont.end() - 1);
+                Pos end_iter = (cont.end() - 1)->pos;
                 size_t oddy_index = get_size();
 
                 auto fill_blanks = [&](size_t to){
@@ -162,9 +229,10 @@ namespace alib5{
                     }
                 };
 
-                for(auto it : cont){
-                    Pos pos = it->first;
-                    Item & item = it->second;
+                for(auto& it : cont){
+                    Pos pos = it.pos;
+                    const Item & item = *(it.item);
+                    Cache & cache = get_cache(pos);
 
                     fill_blanks(pos.col);
                     old_col = pos.col + 1;
@@ -191,7 +259,7 @@ namespace alib5{
                     }
 
                     if(i >= i_beg && i < i_end){
-                        size_t write_index = item.write_index++;
+                        size_t write_index = cache.write_index++;
                         std::string_view line = item.info.lines[write_index];
                         size_t line_size = item.info.cols[write_index];
 
@@ -218,8 +286,8 @@ namespace alib5{
                         for(LogCustomTag tag : item.context.tags){
                             // 因为write_index本身是线性增加的,因此次item中可以存在保存的信息
                             size_t line_revelant_pos = 
-                                (/*在字符串中的绝对位置*/tag.get() <= item.cached_index) ?
-                                0 : tag.get() - item.cached_index;
+                                (/*在字符串中的绝对位置*/tag.get() <= cache.cached_index) ?
+                                0 : tag.get() - cache.cached_index;
                             // 在最后给你全部加进去
                             // 比如 op << Red << "Hello\n" << "World" << Reset
                             // 这里就需要显式加入reset
@@ -227,7 +295,7 @@ namespace alib5{
                             tag.set(line_revelant_pos + real_sz);
                             ctx.tags.emplace_back(tag);
                         }
-                        item.cached_index += line.size() + 1; // 这里可以放心+1,因为没有\n的是最后一行,最后一行还管你cache_index?
+                        cache.cached_index += line.size() + 1; // 这里可以放心+1,因为没有\n的是最后一行,最后一行还管你cache_index?
 
                         if(!line.empty()) [[likely]]{
                             if(line.back() == '\r'){
@@ -251,7 +319,7 @@ namespace alib5{
                     }
                     // 写入完成padding
                     push(gen_space(config.base_padding));
-                    if(it != end_iter && config.enable_mid_sep){
+                    if(it.pos.composed != end_iter.composed && config.enable_mid_sep){
                         push(config.mid_column_sep,1);
                     }else if(config.enable_rborder) push(config.rborder,1);
 
