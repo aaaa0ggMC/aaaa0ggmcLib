@@ -132,6 +132,8 @@ namespace alib5{
 
             for(auto it = op.data.begin();it != op.data.end();++it){
                 auto & [pos,data] = *it;
+                if(pos.row < op.top || pos.row > op.bottom)continue;
+                if(pos.col < op.left || pos.col > op.right)continue;
                 if(op.default_value){
                     fill_defaults(pos);
                 }else if(old_row != pos.row){
