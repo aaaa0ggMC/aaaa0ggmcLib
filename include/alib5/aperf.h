@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 一个简单的性能计算库，能确保数据大致准确，同时省的我每次都要写差不多的benchmark代码
  * @version 5.0
- * @date 2026/01/29
+ * @date 2026/03/22
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -64,36 +64,42 @@ namespace alib5{
         /// 结果列表
         std::vector<SingleBenchmarkResult> results;
 
-        // 由于benchmark只会出现在debug下，不为性能考虑
-        /// 输出为string
-        inline std::string str() const{
-            if(results.empty())return "";
+        struct CalculateInfo{
             double sum = 0;
             double shortest_avg = __DBL_MAX__,longest_avg = 0;
             uint32_t times = 0;
             double stddev = 0;
-            std::stringstream ss;
+            double global_aver = 0;
+            double cv = 0;
+        };
+
+        CalculateInfo calculate() const {
+            CalculateInfo c;
 
             for(auto & t : results){
-                // ss << t.timeSum << " ";
-                sum += t.timeSum;
-                times += t.times;
+                c.sum += t.timeSum;
+                c.times += t.times;
             }
-
-            if(!times)return "";
-
-            float global_aver = sum / times;
+            if(!c.times)return c;
+            c.global_aver = c.sum / c.times;
             for(auto & t : results){
                 double thisAver = t.timeSum / t.times;
 
-                if(thisAver > longest_avg)longest_avg = thisAver;
-                else if(thisAver < shortest_avg)shortest_avg = thisAver;
+                if(thisAver > c.longest_avg)c.longest_avg = thisAver;
+                else if(thisAver < c.shortest_avg)c.shortest_avg = thisAver;
 
-                stddev += (thisAver - global_aver)*(thisAver-global_aver) * t.times;
+                c.stddev += (thisAver - c.global_aver)*(thisAver-c.global_aver) * t.times;
             }
-            stddev = std::sqrt(stddev / (times - 1));
-            double cv = stddev / global_aver * 100;
+            c.stddev = std::sqrt(c.stddev / (c.times - 1));
+            c.cv = c.stddev / c.global_aver * 100;
+            return c;
+        }
 
+        // 由于benchmark只会出现在debug下，不为性能考虑
+        /// 输出为string
+        inline std::string str() const{
+            if(results.empty())return "";
+            auto info = calculate();
             static auto get_time = [](double t){
                 constexpr uint32_t mover_size = 4;
                 constexpr const char * mover[] = {"s","ms","us","ns"}; 
@@ -113,17 +119,18 @@ namespace alib5{
                 return ret;
             };
 
+            std::stringstream ss;
             ss << "\n";
             ss << "-----------------------" << "\n";
             ss << m_name << "\n\n";
             ss << std::setprecision(8) << std::left;
-            ss << std::setw(16) << "TimeCost" << ":" << get_time(sum) << "\n"
-               << std::setw(16) << "RunTimes" << ":" << times << "\n"
-               << std::setw(16) << "Average"  << ":" << get_time(global_aver) << "\n"
-               << std::setw(16) << "ShortestAvgCall" << ":" << get_time(shortest_avg) << "\n"
-               << std::setw(16) << "LongestAvgCall"  << ":" << get_time(longest_avg) << "\n"
-               << std::setw(16) << "Stddev"  << ":" << stddev << "\n"
-               << std::setw(16) << "CV"  << ":" << std::setprecision(4) << cv << "%";
+            ss << std::setw(16) << "TimeCost" << ":" << get_time(info.sum) << "\n"
+               << std::setw(16) << "RunTimes" << ":" << info.times << "\n"
+               << std::setw(16) << "Average"  << ":" << get_time(info.global_aver) << "\n"
+               << std::setw(16) << "ShortestAvgCall" << ":" << get_time(info.shortest_avg) << "\n"
+               << std::setw(16) << "LongestAvgCall"  << ":" << get_time(info.longest_avg) << "\n"
+               << std::setw(16) << "Stddev"  << ":" << info.stddev << "\n"
+               << std::setw(16) << "CV"  << ":" << std::setprecision(4) << info.cv << "%";
             ss << "\n--------------------------------";
             return ss.str();
         }

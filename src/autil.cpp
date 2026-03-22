@@ -71,7 +71,7 @@ void sys::enable_virtual_terminal() noexcept{
 
 std::string_view sys::get_cpu_brand() noexcept{
     #ifdef _WIN32
-    static CHAR tchData[1024] = {0};
+    thread_local static CHAR tchData[1024] = {0};
     long lRet;
     HKEY hKey;
     DWORD dwSize;
@@ -91,7 +91,7 @@ std::string_view sys::get_cpu_brand() noexcept{
     }
     return "Unknown";
     #else
-    static std::pmr::string line(ALIB5_DEFAULT_MEMORY_RESOURCE);
+    thread_local static std::pmr::string line(ALIB5_DEFAULT_MEMORY_RESOURCE);
     std::ifstream proc("/proc/cpuinfo");
     
     if(proc.good()){
