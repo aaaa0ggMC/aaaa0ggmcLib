@@ -58,7 +58,7 @@ int main(){
         });
     }
     
-    /// 字符串转换,比std::to_string快一点点,但是能处理更多种类数据,见(perf0)
+    /// 字符串转换,std::to_string慢一点点,但是能处理更多种类数据,见(perf0)
     // to_string 支持std::format能处理的类型
     std::string_view sv = ext::to_string<size_t,false>(10); // 第二个false表示不copy,返回string_view
     std::pmr::string str = ext::to_string(true); // 默认为true,std::返回pmr::string使用全局内存池
