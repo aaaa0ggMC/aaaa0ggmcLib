@@ -594,6 +594,19 @@ std::vector<std::string_view> str::split(std::string_view source,std::string_vie
     return vec;
 }
 
+std::pair<double,std::string_view> misc::normalize_elapse(double t){
+    int mindex = normalize_elapse_ms_index;
+    while(0 < mindex && mindex < (normalize_elapse_movers.size() - 1)){
+        if(t < 1){
+            mindex += 1;
+            t *= 1000;
+        }else if(t >= 1000){
+            mindex -= 1;
+            t /= 1000;
+        }else break;
+    }
+    return std::pair(t,std::string_view(normalize_elapse_movers[mindex]));
+}
 
 std::string_view misc::format_duration(int secs) noexcept{
     static thread_local std::pmr::string buffer (ALIB5_DEFAULT_MEMORY_RESOURCE);

@@ -9,43 +9,37 @@ namespace alib5{
     template<class Fn = std::nullptr_t>
     inline auto make_table(const BenchmarkResults& result,Fn fn = nullptr){
         if(result.results.empty())return log_table([](auto &op){});
-        auto table = log_table([name = result.m_name,info = result.calculate()](auto & op){
-            static auto get_time = [](double t){
-                constexpr uint32_t mover_size = 4;
-                constexpr const char * mover[] = {"s","ms","us","ns"}; 
-                std::string ret = "";
-                int mindex = 1;
-                while(0 < mindex && mindex < (mover_size - 1)){
-                    if(t < 1){
-                        mindex += 1;
-                        t *= 1000;
-                    }else if(t >= 1000){
-                        mindex -= 1;
-                        t /= 1000;
-                    }else break;
-                }
-                ret += std::to_string(t);
-                ret += mover[mindex];
-                return ret;
+        auto table = log_table([prec = result.m_precision,name = result.m_name,info = result.calculate()](auto & op){
+            size_t row_index = 0;
+            // 设置头颜色
+            op[0][0] << LOG_COLOR1(Blue);
+            op[0][1] << LOG_COLOR1(Blue);
+            // 设置fmt
+            std::string fmt = "{:.";
+            fmt += std::to_string(prec);
+            fmt += "f}";
+            auto add_row = [&](auto && desc,auto && val){
+                op[row_index][0] << std::forward<decltype(desc)>(desc);
+                op[row_index][1] << std::forward<decltype(val)>(val);
+                return op[row_index++][1];
+            };
+            auto add_trow = [&](auto && desc,double val_ms){
+                op[row_index][0] << std::forward<decltype(desc)>(desc);
+                auto p = misc::normalize_elapse(val_ms);
+                op[row_index][1] << log_tfmt(fmt) << p.first << p.second;
+                return op[row_index++][1];
             };
 
-            op[0][0] << LOG_COLOR1(Blue) << "Test" << LOG_COLOR1(None);
-            op[0][1] << LOG_COLOR1(Blue) << name << LOG_COLOR1(None);
-            op[1][0] << "TimeCost";
-            op[1][1] << get_time(info.sum);
-            op[2][0] << "RunTimes";
-            op[2][1] << info.times;
-            op[3][0] << "Average";
-            op[3][1] << get_time(info.global_aver);
-            op[4][0] << "ShortestAvgCall";
-            op[4][1] << get_time(info.shortest_avg);
-            op[5][0] << "LongestAvgCall";
-            op[5][1] << get_time(info.longest_avg);
-            op[6][0] << "Stddev";
-            op[6][1] << info.stddev;
-            op[7][0] << "CV";
-            op[7][1] << log_tfmt("{:.2f}") << info.cv << "%";
+            add_row("Test",name);
+            add_trow("TimeCost",info.sum);
+            add_row("RunTimes",info.times);
+            add_trow("Average",info.global_aver);
+            add_trow("ShortestAvgCall",info.shortest_avg);
+            add_trow("LongestAvgCall",info.longest_avg);
+            add_row("Stddev",log_tfmt(fmt)) << info.stddev;
+            add_row("CV",log_tfmt("{:.2f}")) << info.cv << "%";
         });
+        table.add_restore_tag(LOG_COLOR1(None));
         table.config.col_align = ColAlign::Center;
         table.config.row_align = RowAlign::Center;
         if constexpr(requires{fn(table);}){

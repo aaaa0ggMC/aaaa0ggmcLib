@@ -293,7 +293,7 @@ namespace alib5{
                             // 在最后给你全部加进去
                             // 比如 op << Red << "Hello\n" << "World" << Reset
                             // 这里就需要显式加入reset
-                            line_revelant_pos = std::min(line_revelant_pos,line_size);
+                            line_revelant_pos = std::min(line_revelant_pos,line.size());
                             tag.set(line_revelant_pos + real_sz);
                             ctx.tags.emplace_back(tag);
                         }
@@ -309,12 +309,16 @@ namespace alib5{
                             }
                         }
                         
-                        real_sz = ctx.cache_str.size();
-                        for(LogCustomTag tag : restore_tags){
-                            tag.set(real_sz);
-                            ctx.tags.emplace_back(tag);
+                        // 只有真的存在tags才会尝试插入restore tags!
+                        /// @note 这点需要注意
+                        if(item.context.tags.size()){
+                            real_sz = ctx.cache_str.size();
+                            for(LogCustomTag tag : restore_tags){
+                                tag.set(real_sz);
+                                ctx.tags.emplace_back(tag);
+                            }
                         }
-                        // 前空格
+                        // 后空格
                         if(space_aft)push(gen_space(space_aft));
                     }else{ // 写入最大空格,处理也是这样的
                         push(gen_space(current_col_len));

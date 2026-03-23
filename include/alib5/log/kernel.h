@@ -2,7 +2,7 @@
 * @brief 与日志有关的函数库
 * @author aaaa0ggmc
 * @last-date 2025/04/04
-* @date 2026/03/19 
+* @date 2026/03/23 
 * @version 5.0
 * @copyright Copyright(C)2025
 ********************************
@@ -308,10 +308,6 @@ namespace alib5{
         /// @brief 支持多参数的转发，适配LogLevel
         template<class... Args> inline bool log(LogLevel level,std::string_view fmt,Args&&... args){
             return log(static_cast<int>(level),fmt,std::forward<Args>(args)...);
-        }
-        /// @brief 支持多参数的转发，静态版本，适配LogLevel
-        template<class... Args> inline bool log(LogLevel level,const std::format_string<Args...>& fmt,Args&&... args){
-            return log_fast(static_cast<int>(level),fmt,std::forward<Args>(args)...);
         }
         /// @brief 提供已经装载到对应内存的数据，这个时候直接move就行
         /// @note  pmr_data会失效！

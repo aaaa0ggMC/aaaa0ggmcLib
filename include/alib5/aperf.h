@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 一个简单的性能计算库，能确保数据大致准确，同时省的我每次都要写差不多的benchmark代码
  * @version 5.0
- * @date 2026/03/22
+ * @date 2026/03/23
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -63,6 +63,8 @@ namespace alib5{
         std::string m_name;
         /// 结果列表
         std::vector<SingleBenchmarkResult> results;
+        /// 除了CV外精度
+        size_t m_precision { 6 };
 
         struct CalculateInfo{
             double sum = 0;
@@ -100,36 +102,29 @@ namespace alib5{
         inline std::string str() const{
             if(results.empty())return "";
             auto info = calculate();
-            static auto get_time = [](double t){
-                constexpr uint32_t mover_size = 4;
-                constexpr const char * mover[] = {"s","ms","us","ns"}; 
-                std::string ret = "";
-                int mindex = 1;
-                while(0 < mindex && mindex < (mover_size - 1)){
-                    if(t < 1){
-                        mindex += 1;
-                        t *= 1000;
-                    }else if(t >= 1000){
-                        mindex -= 1;
-                        t /= 1000;
-                    }else break;
-                }
-                ret += std::to_string(t);
-                ret += mover[mindex];
-                return ret;
-            };
+
 
             std::stringstream ss;
+            auto norm_insert = [&](double v) -> auto& {
+                auto p = misc::normalize_elapse(v);
+                ss << std::setprecision(m_precision) <<  p.first << p.second;
+                return ss;
+            };
+
             ss << "\n";
             ss << "-----------------------" << "\n";
             ss << m_name << "\n\n";
             ss << std::setprecision(8) << std::left;
-            ss << std::setw(16) << "TimeCost" << ":" << get_time(info.sum) << "\n"
+            ss << std::setw(16) << "TimeCost" << ":";
+            norm_insert(info.sum) << "\n"
                << std::setw(16) << "RunTimes" << ":" << info.times << "\n"
-               << std::setw(16) << "Average"  << ":" << get_time(info.global_aver) << "\n"
-               << std::setw(16) << "ShortestAvgCall" << ":" << get_time(info.shortest_avg) << "\n"
-               << std::setw(16) << "LongestAvgCall"  << ":" << get_time(info.longest_avg) << "\n"
-               << std::setw(16) << "Stddev"  << ":" << info.stddev << "\n"
+               << std::setw(16) << "Average"  << ":";
+            norm_insert(info.global_aver) << "\n"
+               << std::setw(16) << "ShortestAvgCall" << ":";
+            norm_insert(info.shortest_avg) << "\n"
+               << std::setw(16) << "LongestAvgCall"  << ":";
+            norm_insert(info.longest_avg) << "\n"
+               << std::setw(16) << "Stddev"  << ":" << std::setprecision(m_precision) << info.stddev << "\n"
                << std::setw(16) << "CV"  << ":" << std::setprecision(4) << info.cv << "%";
             ss << "\n--------------------------------";
             return ss.str();
@@ -137,6 +132,11 @@ namespace alib5{
 
         BenchmarkResults& name(std::string name){
             m_name = name;
+            return *this;
+        }
+
+        BenchmarkResults& precision(size_t prec){
+            m_precision = prec;
             return *this;
         }
 

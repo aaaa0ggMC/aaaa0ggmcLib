@@ -20,11 +20,11 @@ void log_stacktrace::write_to_log(std::pmr::string & str){
         )continue; // skip c++ stacktrace
 
         str +=  "  ";
-        str += ext::to_string<size_t,false>(index - skip_depth);
+        str += ext::to_string<false>(index - skip_depth);
         str += "# ";
         str += entry.source_file();
         str += ":";
-        str += ext::to_string<size_t,false>(entry.source_line());
+        str += ext::to_string<false>(entry.source_line());
         str += " at ";
         str += entry.description();
         if(auto_newline)str += "\n";

@@ -330,6 +330,15 @@ namespace alib5{
         /// 具体实现
         template<class Lg>
         StreamedContext<Lg>&& _self_forward(StreamedContext<Lg> && ctx);
+
+        /// @note 只有Item中真的有至少一个tags才会尝试插入restore tags
+        inline void add_restore_tag(log_tag tag){
+            restore_tags.emplace_back(LogCustomTag{
+                .pos = 0,
+                .category = tag.category,
+                .payload = tag.payload
+            });
+        }
     
         static ALIB5_API cfg unicode_rounded();
         static ALIB5_API cfg minimal();

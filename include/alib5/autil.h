@@ -1,7 +1,7 @@
 /**@file autil.h
 * @brief 工具库，提供实用函数
 * @author aaaa0ggmc
-* @date 2026/03/15
+* @date 2026/03/23
 * @version 5.0
 * @copyright Copyright(c) 2026
 */
@@ -65,6 +65,12 @@ namespace alib5{
     /// Level 2 : 轻伤输出
     /// Level 3 : 输出一切
     constexpr uint32_t conf_lib_error_invoke_level = 1;
+    /// msic::normalize_elapse的游标
+    /// 不建议修改这个,不然会导致函数运行崩溃
+    constexpr std::array<std::string_view,4> normalize_elapse_movers = {"s","ms","us","ns"};
+    constexpr size_t normalize_elapse_ms_index = 1;
+
+
     /// 判断输入内容是否可以归类于string
     template<class T> concept IsStringLike = std::convertible_to<T,std::string_view>;
     using String = std::pmr::string;
@@ -123,10 +129,10 @@ namespace alib5{
 
         /// 转换为string(特化路径)
         /// @tparam copy 为true时返回std::string可用于直接构造对象，为false时返回std::string_view可以持有内部buffer的数据
-        template<IsStringLike T,bool copy = true> [[nodiscard]] auto to_string(T && v) noexcept;
+        template<bool copy = true,IsStringLike T> [[nodiscard]] auto to_string(T && v) noexcept;
         /// 转换为string(General)
         /// @tparam copy 为true时返回std::string可用于直接构造对象，为false时返回std::string_view可以持有内部buffer的数据
-        template<class T,bool copy = true> [[nodiscard]] auto to_string(T && v) noexcept;
+        template<bool copy = true,class T> [[nodiscard]] auto to_string(T && v) noexcept;
 
         /// 转换为其他类型
         template<class T> auto to_T(std::string_view v,std::from_chars_result * result = nullptr) noexcept;
@@ -208,6 +214,8 @@ namespace alib5{
         std::string_view ALIB5_API get_time() noexcept;
         /// 格式化时间
         std::string_view ALIB5_API format_duration(int seconds) noexcept;
+        /// 对耗时进行细致化的处理
+        std::pair<double,std::string_view> ALIB5_API normalize_elapse(double elapse_ms);
     
         /// DeferManager,类似c++ atexit的方式
         struct DeferManager{
@@ -578,7 +586,7 @@ namespace alib5{
     }
 
     namespace ext{
-        template<IsStringLike T,bool copy> [[nodiscard]] auto to_string(T && v) noexcept{
+        template<bool copy,IsStringLike T> [[nodiscard]] auto to_string(T && v) noexcept{
             if constexpr(std::is_pointer_v<decltype(v)>){
                 [[unlikely]] if(!v)return "";
             }
@@ -609,14 +617,22 @@ namespace alib5{
             }else return std::string_view(fmt_buf);
         }
 
-        template<class T,bool copy> [[nodiscard]] auto to_string(T && v) noexcept{
-            fmt_buf.clear();
-            try{
-                std::format_to(std::back_inserter(fmt_buf),"{}",std::forward<T>(v));
-            }catch(...){
-                fmt_buf = "[FOMRAT_ERROR]";
-                MAY_INVOKE(3){
-                    invoke_error(err_format_error,"Failed to format the target!");
+        template<bool copy,class T> [[nodiscard]] auto to_string(T && v) noexcept{
+            // std::string能处理的给std::string,实际上效率会更高
+            using PureT  = std::decay_t<T>;
+            if constexpr(std::is_arithmetic_v<PureT> ||
+                std::is_same_v<PureT, bool>
+            ){
+                fmt_buf = std::to_string(std::forward<T>(v));
+            }else{
+                fmt_buf.clear();
+                try{
+                    std::format_to(std::back_inserter(fmt_buf),"{}",std::forward<T>(v));
+                }catch(...){
+                    fmt_buf = "[FOMRAT_ERROR]";
+                    MAY_INVOKE(3){
+                        invoke_error(err_format_error,"Failed to format the target!");
+                    }
                 }
             }
             if constexpr(copy){
