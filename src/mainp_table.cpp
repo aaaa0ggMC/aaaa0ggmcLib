@@ -100,16 +100,6 @@ StringCalcInfo alib5::_default_string_calc(std::string_view sv){
     }
     return info;
 }
-log_table::log_table(
-    OperatorFn fn,
-    StringCalcFn calc,
-    const cfg& c,
-    std::pmr::memory_resource * allocator
-):func(fn)
-,config(c)
-,allocator(allocator)
-,calc(calc)
-,restore_tags(allocator){}
 
 StreamedContext<LogFactory>&& log_table::self_forward(StreamedContext<LogFactory> && ctx){
     return _self_forward(std::move(ctx));

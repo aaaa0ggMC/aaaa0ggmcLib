@@ -281,22 +281,40 @@ namespace alib5{
 
                         // 前空格
                         if(space_bef)push(gen_space(space_bef));
-
+            
                         // 这里写入了实际数据,因此需要push_tags以及restore_tags
                         // 由于对于局部的context是覆盖制,因此换行需要把之前的tags全部搞进来
                         size_t real_sz = ctx.cache_str.size();
-                        for(LogCustomTag tag : item.context.tags){
-                            // 因为write_index本身是线性增加的,因此次item中可以存在保存的信息
-                            size_t line_revelant_pos = 
-                                (/*在字符串中的绝对位置*/tag.get() <= cache.cached_index) ?
-                                0 : tag.get() - cache.cached_index;
-                            // 在最后给你全部加进去
-                            // 比如 op << Red << "Hello\n" << "World" << Reset
-                            // 这里就需要显式加入reset
-                            line_revelant_pos = std::min(line_revelant_pos,line.size());
-                            tag.set(line_revelant_pos + real_sz);
-                            ctx.tags.emplace_back(tag);
+
+                        auto merge_tags = [&]<class T>(T && v){
+                            size_t last_emplace_tag = std::variant_npos;
+                            size_t last_same_slot = 0;
+                            for(size_t tag_index = 0;tag_index < item.context.tags.size();++tag_index){
+                                LogCustomTag tag = item.context.tags[tag_index];
+                                // 因为write_index本身是线性增加的,因此次item中可以存在保存的信息
+                                size_t line_revelant_pos = 
+                                    (/*在字符串中的绝对位置*/tag.get() <= cache.cached_index) ?
+                                    0 : tag.get() - cache.cached_index;
+                                // 在最后给你全部加进去
+                                // 比如 op << Red << "Hello\n" << "World" << Reset
+                                // 这里就需要显式加入reset
+                                line_revelant_pos = std::min(line_revelant_pos,line.size());
+                                tag.set(line_revelant_pos + real_sz);
+                                if constexpr(std::is_same_v<T,int>){
+                                    merge_tag(tag,ctx.tags,last_same_slot);
+                                    if(line_revelant_pos + real_sz != last_emplace_tag){
+                                        last_emplace_tag = line_revelant_pos + real_sz;
+                                        last_same_slot = tag_index;
+                                    }
+                                }else ctx.tags.emplace_back(tag);
+                            }
+                        };
+                        if(merge_tag){
+                            merge_tags((int)1);
+                        }else{
+                            merge_tags(false);
                         }
+                        
                         cache.cached_index += line.size() + 1; // 这里可以放心+1,因为没有\n的是最后一行,最后一行还管你cache_index?
 
                         if(!line.empty()) [[likely]]{

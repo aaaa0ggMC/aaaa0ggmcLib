@@ -268,6 +268,9 @@ namespace alib5{
 
 
     using StringCalcFn = std::function<StringCalcInfo(std::string_view)>;
+    // 用户自己处理同个slot的各种信息,十分不建议删除slot_begin前面的数据,除非你知道自己在做什么
+    // 当有了mergefn后log_table将不会进行合并,靠用户自己
+    using TagMergeFn = std::function<bool(const LogCustomTag & incoming,std::pmr::vector<LogCustomTag> & tags,size_t & slot_begin)>;
     using OperatorFn = std::function<void(detail::Operator&)>;
 
     /// 核心出装
@@ -312,6 +315,7 @@ namespace alib5{
 
         OperatorFn func;
         StringCalcFn calc;
+        TagMergeFn merge_tag;
         cfg config; 
         std::pmr::memory_resource * allocator;
         std::pmr::vector<LogCustomTag> restore_tags;
@@ -319,9 +323,15 @@ namespace alib5{
         log_table(
             OperatorFn fn,
             StringCalcFn calc = _default_string_calc,
+            TagMergeFn merge_tag = nullptr,
             const cfg& c = cfg(),
             std::pmr::memory_resource * allocator = ALIB5_DEFAULT_MEMORY_RESOURCE
-        );
+        ):func(fn)
+        ,config(c)
+        ,allocator(allocator)
+        ,calc(calc)
+        ,merge_tag(merge_tag)
+        ,restore_tags(allocator){}
 
         /// 支持标准版本以及Mock版本
         StreamedContext<LogFactory>&& self_forward(StreamedContext<LogFactory> && ctx);
