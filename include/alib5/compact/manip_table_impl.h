@@ -203,7 +203,7 @@ namespace alib5{
                     // 写入rborder
                     push('\n');                      
                 }
-                size_t old_col = cont[0].pos.col;
+                size_t old_col = op.left;
 
                 /// 开始写入,加入lborder
                 if(config.enable_lborder)push(config.lborder,1);
