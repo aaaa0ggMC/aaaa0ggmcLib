@@ -215,7 +215,7 @@ JSON::DumpResult JSON::__internal_dump(__dump_fn fn,void * p, const dadata_t & r
 
                         std::format_to(std::back_inserter(double_cache),std::runtime_format("{:.{}f}"),val,cfg.float_precision);
                         fn(double_cache,p);
-                    }else fn(v.to<std::string>(),p);
+                    }
                 }
                 if(cfg.float_precision < 0)fn(v.to<std::string>(),p);
             }else{

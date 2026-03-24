@@ -26,6 +26,39 @@
 
 ## 前言
 简略地介绍aaaa0ggmcLib主要组件的情况以及简单的使用案例
+```cpp
+#include <alib5/alogger.h>
+#include <alib5/adata.h>
+#include <alib5/autil.h>
+#include <alib5/adebug.h>
+
+using namespace alib5;
+
+int main() {
+    // 1. 开箱即用的精美日志
+    Logger logger;
+    LogFactory lg(logger, "alib5_intro");
+    logger.append_mod<lot::Console>("console");
+
+    // 2. 类似 Go/Zig 的优雅清理机制
+    $defer { lg << LOG_COLOR1(Green) << "✨ alib5 shutdown gracefully." << endlog; };
+
+    // 3. 极其爽快的无缝数据操作 (类似 Python dict)
+    AData doc;
+    doc.load_from_memory(R"({"name": "aaaa0ggmcLib", "version": 5.0, "magic": true})");
+    doc["features"][0] = "Modern C++20/23";
+    doc["features"][1] = "Aesthetic Logger";
+
+    // 4. Rustic 风格的硬核防御
+    panic_if(!doc["magic"].value().transform<bool>(), "Where is the magic?!");
+
+    // 5. 极简的流式输出
+    lg(Severity::Info) << "Welcome to " << LOG_COLOR1(Cyan) << doc["name"] 
+                       << LOG_COLOR1(None) << " v" << doc["version"] << endlog;
+
+    return 0;
+}
+```
 
 ## 测试平台
 <pre>
