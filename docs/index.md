@@ -16,6 +16,13 @@
     - [示例代码](#示例代码)
     - [perf0 json读取速度测试](#perf0-json读取速度测试)
     - [perf1 单层引用测试](#perf1-单层引用测试)
+  - [ECS系统 aecs](#ecs系统-aecs)
+  - [比较安全的引用系统 aref](#比较安全的引用系统-aref)
+  - [Rustic🦀的崩溃系统 adebug](#rustic的崩溃系统-adebug)
+  - [性能测试 aperf](#性能测试-aperf)
+  - [算法库(实验性) aalgorithm](#算法库实验性-aalgorithm)
+  - [简单的i18n支持 atranlator](#简单的i18n支持-atranlator)
+    - [基础Translator和Flatten版本的对比](#基础translator和flatten版本的对比)
 
 ## 前言
 简略地介绍aaaa0ggmcLib主要组件的情况以及简单的使用案例
@@ -527,4 +534,439 @@ CV              :13.25%
 --------------------------------
 ```
 
+## ECS系统 [aecs](./aecs.md)
+- 比较简洁的api
+- 相当多的注入方式
+- 支持编译期的组件依赖以及处理
+- (中性)使用Freelist策略(这意味着返回的aref是稳定的,但是也意味着可能出现空洞,不过位图尽量降低了遍历的成本)
+```cpp
+#include <alib5/aecs.h>
+using namespace alib5::ecs;
+
+struct Attributes{
+    float mass;
+};
+
+struct Acceleration{
+    using Dependency = ComponentStack<Attributes>;
+    ref_t<Attributes> attr;
+
+    float x;
+    float y;
+
+    // 注册绑定函数
+    void bind_dep(Dependency::deptup_t& tup){
+        auto [m_attr] = tup;
+        attr = m_attr;
+    }
+
+    void add_force(float x,float y){
+        this->x = x / attr->mass;
+        this->y = y / attr->mass;
+    }
+};
+
+struct Velocity{
+    using Dependency = ComponentStack<Acceleration>;
+    ref_t<Acceleration> accel;
+
+    float x;
+    float y;
+    // 注册绑定函数
+    void bind_dep(Dependency::deptup_t& tup){
+        auto [m_accel] = tup;
+        accel = m_accel;
+    }
+};
+
+int main(){
+    EntityManager manager;
+    
+    EntityWrapper a(manager);
+    EntityWrapper b(manager);
+
+    // 还算简单的获取添加方式,返回ref_t
+    auto [refa_velo,refa_attr,refa_accel] = a.adds<Velocity,Attributes,Acceleration>();
+    ref_t<Acceleration> refb_accel = b.add<Acceleration>();
+    
+    // 设置数值
+    refa_attr->mass = 2.0;
+    // 返回std::optional<ref_t>
+    (*b.get<Attributes>())->mass = 1.0; 
+
+    refa_accel->add_force(10, 10);
+    refb_accel->add_force(10, 10);
+
+    // 批量更新
+    manager.update<Velocity>([](Velocity & v){
+        v.x += v.accel->x;
+        v.y += v.accel->y;
+        std::cout << "Updated." << std::endl;
+    });
+
+    std::cout << refa_velo->x << " " << refa_velo->y << std::endl; 
+}
+```
+```txt
+Updated.
+5 5
+```
+
+## 比较安全的引用系统 aref
+- 其实就是容器+索引,只要保证容器不变索引没问题
+- 那如果是容器也会变呢?那就保证容器的容器不变就行了,总有个东西不变的
+- (滞后性)上面的这个MultiRefWrapper相比RefWrapper比较落后,refwrapper基本上重载了大部分符号转发给内部对象然而multiref并没有支持,同时multiref的[] () ++ --语义不是转发而是移动引用(主要是实战中使用场景为0,所以懒得跟进)
+
+```cpp
+#include <alib5/aref.h>
+#include <alib5/alogger.h>
+#include <vector>
+using namespace alib5;
+
+int main(){
+    std::vector<int> vec = {1};
+    aout << "Vec capacity😱:" << vec.capacity() << fls;
+    auto ref0 = ref(vec,0);
+    vec.reserve(vec.capacity() + 3);
+    ref0.get() = 100;
+    aout << vec << fls;
+
+    std::vector<
+        std::vector<int>
+    > vec2 = {{1}};
+    aout << "Vecs capacity😱:" << vec2.capacity() << fls;
+    auto refs0 = refs(vec2,0,0);
+    vec2.reserve(vec2.capacity() + 2);
+    refs0.get() = 100;
+    aout << vec2 << fls;
+}
+```
+```txt
+Vec capacity😱:1
+[100]
+Vecs capacity😱:1
+[[100]]
+```
+
+## Rustic🦀的崩溃系统 adebug
+- 什么都不说了兄弟,直接给你崩溃了
+- alib5中panic的选择比较克制,一般都是致命错误,以及debug模式下不太能够忍受的错误
+- 比如ArrayOutOfBounds,ForbiddenImplicitCast,ECS EntityInvalid却调用等等,涉及的一般都是如果我不panic就segmentfault的场景,不过AData::TOML::dump也有一个panic,因为dump还没实现
+- 需要注意的是如果release模式下你没开生成debug symbol,那么panic得到的栈信息是空气
+```cpp
+// 这里作为测试案例覆盖一下,正常这个是std::abort()
+#define ADEBUG_INTERNAL_PANIC_ABORT
+#include <alib5/adebug.h>
+
+int main(){
+    bool im_bad = true;
+    panic_if(im_bad,"Imma bad guy!");
+    // 也支持格式化
+    panicf_if(im_bad,"Imma bad {} boy!","bad");
+    // 单纯的也支持
+    auto fn = [&]{panic("Holy cow!");};
+    fn();
+    // 还有release模式下自动变成空的东西
+    // 注意这个和assert不一样,这个相当于是panic_if,所以值为true的时候反而会panic!!
+    panic_debug(true,"leihou");
+}
+```
+```txt
+Message  : Imma bad guy!
+Condition: im_bad
+Source   : ./Testing/main.cpp:7:5
+Function : int main()
+Stack    : 
+  0# ./Testing/main.cpp:7 at main
+
+
+Message  : Imma bad bad boy!
+Source   : ./Testing/main.cpp:9:5
+Function : int main()
+Stack    : 
+  0# ./Testing/main.cpp:9 at main
+
+
+Message  : Holy cow!
+Source   : ./Testing/main.cpp:11:19
+Function : main()::<lambda()>
+Stack    : 
+  0# ./Testing/main.cpp:11 at operator()
+  1# ./Testing/main.cpp:12 at main
+
+
+Message  : leihou
+Condition: true
+Source   : ./Testing/main.cpp:15:5
+Function : int main()
+Stack    : 
+  0# ./Testing/main.cpp:15 at main
+```
+
+## 性能测试 aperf
+- 相信前面的文档你已经看出来了,用来测速的
+- 测速的准确度我显然是不能保证的,ns级别测速可能会出现20%左右的浮动,但是us-ms级别还算准确
+- 但是测试相对速度不就行了?
+- 支持插入std::ostream(cout),alogger
+- 同时对于alogger,compact包(compact/make_table.h)提供了一个不错的make_table更加美观
+- 不过原本的格式还算美观了
+
+```cpp
+#include <alib5/aperf.h>
+#include <alib5/adata.h>
+#include <alib5/alogger.h>
+#include <alib5/compact/make_table.h>
+using namespace alib5;
+
+int main(){
+    AData d;
+    d["howdy"] = 1;
+    d["pity"] = 1.0f;
+
+    // 第一个参数为单轮次数,第二个为轮次,单轮次数太少会导致CV偏大,轮次太少会导致CV偏小
+    BenchmarkResults perf = Benchmark([&d]{
+        d["howdy"].value().transform<int>()++;
+    }).run(1000,100).name("DebugPerformance:INT");
+
+    BenchmarkResults perf2 = Benchmark([&d]{
+        d["pity"].value().transform<double>()++;
+    }).run(1000,100).name("DebugPerformance:DOUBLE");
+
+    std::cout << perf << std::endl;
+    aout << make_table({perf,perf2},[](log_table & tb){
+        // 默认是ascii格式+---+--+,我这里换成无缝unicode
+        tb.config = tb.unicode_rounded();
+        tb.config.col_align = ColAlign::Center;
+        tb.config.row_align = RowAlign::Center;
+    }) << fls;
+}
+```
+```txt
+-----------------------
+DebugPerformance:INT
+
+TimeCost        :4.67559ms
+RunTimes        :100000
+Average         :46.7559ns
+ShortestAvgCall :45.117ns
+LongestAvgCall  :55.803ns
+Stddev          :1.94933e-06
+CV              :4.169%
+--------------------------------
+╭─────────────────┬──────────────────────┬─────────────────────────╮
+│      Test       │ DebugPerformance:INT │ DebugPerformance:DOUBLE │
+├─────────────────┼──────────────────────┼─────────────────────────┤
+│    TimeCost     │      4.675595ms      │       5.189702ms        │
+├─────────────────┼──────────────────────┼─────────────────────────┤
+│    RunTimes     │        100000        │         100000          │
+├─────────────────┼──────────────────────┼─────────────────────────┤
+│     Average     │     46.755950ns      │       51.897020ns       │
+├─────────────────┼──────────────────────┼─────────────────────────┤
+│ ShortestAvgCall │     45.117000ns      │       45.118000ns       │
+├─────────────────┼──────────────────────┼─────────────────────────┤
+│ LongestAvgCall  │     55.803000ns      │       72.426000ns       │
+├─────────────────┼──────────────────────┼─────────────────────────┤
+│     Stddev      │       0.000002       │        0.000007         │
+├─────────────────┼──────────────────────┼─────────────────────────┤
+│       CV        │        4.17%         │         12.56%          │
+╰─────────────────┴──────────────────────┴─────────────────────────╯
+```
+
+
+## 算法库(实验性) aalgorithm
+- 目前只是支持几个排序算法(插入,三种快排,冒泡)
+
+```cpp
+#include <alib5/aalgorithm.h>
+#include <alib5/alogger.h>
+#include <alib5/aperf.h>
+#include <alib5/compact/make_table.h>
+
+using namespace alib5;
+using namespace alib5::algo;
+
+int main(){
+    std::vector<int> origin = {4,7,2,3,6,1,8,9,5,7,3,10,14,52,56,34,78,91};
+    // 还算简单的api,其实很接近std::sort的说
+    {
+        auto a = origin;
+        sort::bubble(origin.begin(), origin.end(), std::less<int>());
+        aout << origin << fls;
+    }
+    // 支持inject
+    {
+        auto b = origin;
+        // 这里的true表示反转
+        // 需要注意的是sort先交换元素然后才检查inject,因此实际上swap_prev目前的数值是swap_aft以前的数值
+        // (怎么感觉有点绕口令?) 
+        // 不过本身这个就是对称操作
+        // 注意inject调用次数不等于时间复杂度之类的,每个算法的inject的时机不尽相同
+        aout << "Swaps For Insertion:\n";
+        sort::insertion(b.data(),b.data() + b.size(), std::less<int>(),
+        true,[&b](std::size_t swap_prev,std::size_t swap_aft){
+            aout << b[swap_prev] << " <=> " << b[swap_aft] << ";";
+        });
+        aout << fls;
+    }
+    {
+        auto b = origin;
+        aout << "Swaps For Quick(MedianOfThree):\n";
+        // 这个也是默认策略,因此可以不填写
+        sort::quick<sort::PartitionMedianThree>(b.data(),b.data() + b.size(), std::less<int>(),
+        true,[&b](std::size_t swap_prev,std::size_t swap_aft){
+            aout << b[swap_prev] << " <=> " << b[swap_aft] << ";";
+        });
+        aout << fls;
+    }
+
+    /// 简单的性能计算,在我电脑Release下测试
+    /// 注意是小数据情况测试
+    aout << make_table({
+        Benchmark([origin] mutable {
+            sort::bubble(origin.begin(), origin.end(), std::less<int>());
+        }).run(1000,100).name("Bubble Sort"),
+        Benchmark([origin] mutable {
+            sort::insertion(origin.begin(), origin.end(), std::less<int>());
+        }).run(1000,100).name("Insertion Sort"),
+        Benchmark([origin] mutable {
+            sort::quick<sort::PartitionMedianThree>(origin.begin(), origin.end(), std::less<int>());
+        }).run(1000,100).name("Quick Sort(Median of Three)"),
+        Benchmark([origin] mutable {
+            sort::quick<sort::PartitionHoare>(origin.begin(), origin.end(), std::less<int>());
+        }).run(1000,100).name("Quick Sort(Hoare)"),
+        Benchmark([origin] mutable {
+            sort::quick<sort::PartitionLomuto>(origin.begin(), origin.end(), std::less<int>());
+        }).run(1000,100).name("Quick Sort(Lomuto)")
+    },[](log_table & tb){
+        tb.config = tb.modern_dot();
+    }) << fls;
+}
+```
+![截图][algo]
+
+## 简单的i18n支持 atranlator
+- 基于AData JSON提供键值翻译功能,同时由于AData线程不安全因此提供FlattenTranslator达成O(1)访问 + 多线程安全的常量翻译器
+- 支持传统的dot访问(a./b.c)与严谨的json pointer(/a/~1b/c)
+- 支持读取文件夹,支持多个翻译文件(同种语言id)增量覆盖
+- 对于文件夹扫描,按照ascii顺序(std::compare,a to z)进行依次读取
+
+```cpp
+#include <alib5/atranslator.h>
+#include <alib5/alogger.h>
+using namespace alib5;
+
+int main(){
+    Translator tl;
+    // 如果是一个文件就读取文件,如果是文件夹读取文件夹内所有文件,第二个参数可传入函数对文件进行名字筛选
+    // 默认只选择.json后缀文件
+    // tl.load_from_entry(io::load_entry("./translation"));
+
+    // 一个有效的翻译文件必须包含id和title,否则会因为校验不过返回false
+    aout << "Result: " << tl.load_from_memory(R"({
+        "id" : "zh_cn",
+        "title" : "简体中文",
+        "ok" : {
+            "test" : "{}加载成功!"
+        }
+    })") << fls;
+    // 增量覆盖
+    aout << "Result: " << tl.load_from_memory(R"({
+        "id" : "zh_cn",
+        "title" : "简体中文",
+        "ok" : {
+            "test2" : "{}加载成功 * 2!"
+        }
+    })") << fls;
+    // 默认会选择第一个加载的语言
+    aout << "Switch: " << tl.switch_language("en_us") << fls; // 没有就会什么也不干
+    // 需要注意的是Translator默认选择的是jsonp格式
+    aout << tl.translate("/id") << fls;
+
+    // 扁平化,返回optional<T>
+    FlattenTranslator fl = *tl.flatten_dots();
+
+    // 模板上的false表示不copy,除非你足够自信,还是建议选择默认的copy模式
+    aout << fl.translate("ok.test", fl.translate<false>("title")) << fls;
+    aout << fl.translate("ok.test2", fl.translate<false>("title")) << fls;
+}
+```
+```txt
+Result: true
+Result: true
+Switch: false
+zh_cn
+简体中文加载成功!
+简体中文加载成功 * 2!
+```
+
+### 基础Translator和Flatten版本的对比
+```cpp
+// 保证公平使用jsonp
+auto jsonp_fl = *tl.flatten_jsonp();
+// 理论最小元
+aout << Benchmark([&tl]{
+    tl.translate<false>("/title");
+}).run(1000, 100).name("Origin Base") << endlog;
+aout << Benchmark([&jsonp_fl]{
+    jsonp_fl.translate<false>("/title");
+}).run(1000, 100).name("Flatten Base") << endlog;
+// 复杂场景
+aout << Benchmark([&tl]{
+    tl.translate("/ok/test2", tl.translate("/title"));
+}).run(1000, 100).name("Origin Complex") << endlog;
+aout << Benchmark([&jsonp_fl]{
+    jsonp_fl.translate("/ok/test2", jsonp_fl.translate("/title"));
+}).run(1000, 100).name("Flatten Complex") << endlog;
+```
+```txt
+-----------------------
+Origin Base
+
+TimeCost        :13.6694ms
+RunTimes        :100000
+Average         :136.694ns
+ShortestAvgCall :128.228ns
+LongestAvgCall  :157.911ns
+Stddev          :5.24747e-06
+CV              :3.839%
+--------------------------------
+
+-----------------------
+Flatten Base
+
+TimeCost        :439.303us
+RunTimes        :100000
+Average         :4.39303ns
+ShortestAvgCall :3.561ns
+LongestAvgCall  :5.937ns
+Stddev          :6.16958e-07
+CV              :14.04%
+--------------------------------
+
+-----------------------
+Origin Complex
+
+TimeCost        :37.2647ms
+RunTimes        :100000
+Average         :372.647ns
+ShortestAvgCall :357.378ns
+LongestAvgCall  :425.054ns
+Stddev          :9.01576e-06
+CV              :2.419%
+--------------------------------
+
+-----------------------
+Flatten Complex
+
+TimeCost        :6.65364ms
+RunTimes        :100000
+Average         :66.5364ns
+ShortestAvgCall :60.552ns
+LongestAvgCall  :87.86ns
+Stddev          :3.5298e-06
+CV              :5.305%
+--------------------------------
+```
+
+[algo]: ./res/algo.png
 [def]: ./res/alogger.png

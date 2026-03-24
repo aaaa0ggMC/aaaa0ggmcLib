@@ -1,7 +1,7 @@
 /**@file atranslator.h
 * @brief 简单的翻译器
 * @author aaaa0ggmc
-* @date 2026/03/15
+* @date 2026/03/24
 * @version 5.0
 * @copyright Copyright(c) 2026 
 */
@@ -172,8 +172,11 @@ namespace alib5{
         Result ALIB5_API load_from_entry(io::FileEntry entry,IsTRFileFn is_translation_file = __default_is_trfile);  
     
         /// 切换语言
-        inline void switch_language(std::string_view lan){
+        inline bool switch_language(std::string_view lan){
+            auto & o = translations.object();
+            if(o.find(lan) == o.end())return false;
             current_language = lan;
+            return true;
         }
 
         /// 并没有缓存,使用的是dots格式,见flatten_dots

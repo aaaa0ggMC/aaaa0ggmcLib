@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 不会悬垂的比较安全的容器数据wrapper,Release下单次性能损失为0.3ns
  * @version 5.0
- * @date 2026/03/18
+ * @date 2026/03/24
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  ********************************************************
@@ -272,7 +272,7 @@ namespace alib5{
         }
 
         /// 构造引用对象
-        template<IsNumber... Args> inline MultiRefWrapper(Cont & c,Args&&... val):cont(c){
+        template<IsNumber... Args> inline MultiRefWrapper(Cont & c,Args&&... val):cont(&c){
             set_indices(std::forward<Args>(val)...);
         }
 
@@ -325,7 +325,7 @@ namespace alib5{
     /// 获取多层container的引用
     template<CanAccessItem Cont,IsNumber... Args> auto
         refs(Cont & cont,Args&&... indices){
-        return MultiRefWrapper<Cont,sizeof...(Args)>( &cont,std::forward<Args>(indices)...);
+        return MultiRefWrapper<Cont,sizeof...(Args)>(cont,std::forward<Args>(indices)...);
     }
 }
 

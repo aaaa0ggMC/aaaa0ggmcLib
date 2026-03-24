@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 实体管理
  * @version 0.1
- * @date 2026/01/29
+ * @date 2026/03/24
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -254,6 +254,7 @@ namespace alib5::ecs{
             if(p->destroyer((void*)p,e.id) == -1){
                 return DRCantFind;
             }
+
             return DRSuccess;
         }
 
