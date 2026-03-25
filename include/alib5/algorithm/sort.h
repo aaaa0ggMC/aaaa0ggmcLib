@@ -1,7 +1,8 @@
 /**
  * @file sort.h
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
- * @brief 各种排序算法，在reverse=false的情况下，若使用defcompare，即arg1 < arg2,保证升序
+ * @brief 各种排序算法，在reverse=false的情况下，若使用defcompare，即arg1 < arg2,保证升序 \ 
+ * 每个算法是怎么测试的可以看docs/aalgorithm.md查看情况
  * @version 5.0
  * @date 2026/03/25
  * 
@@ -92,8 +93,16 @@ namespace alib5::algo::sort{
         }
     }
 
+    enum class ShellGapType{
+        Div2,
+        Knuth,
+        Hibbard
+    };
+
     /// @brief 简单的希尔排序 时间复杂度O(n^1.3) - O(n^2) Tier:D 
-    template<IsIterator IterType,
+    /// 就是带上gap的插入排序
+    template<ShellGapType GapType = ShellGapType::Div2,
+            IsIterator IterType,
             IsCompareFn<typename std::iterator_traits<IterType>::value_type> CompareFn,
             IsInjectFn InjectFn = std::nullptr_t
             > 
@@ -110,8 +119,29 @@ namespace alib5::algo::sort{
         if(begin == end)return;
 
         size_t len = std::distance(begin,end);
-        size_t gap = len >> 1;
-        while(gap){
+        size_t gap = 1;
+
+        if constexpr(GapType == ShellGapType::Div2){
+            gap = len / 2;
+        }else if constexpr(GapType == ShellGapType::Knuth){
+            while(gap < len / 3)gap = 3 * gap + 1;
+        }else if constexpr(GapType == ShellGapType::Hibbard){
+            while(gap <= len) gap = (gap << 1) | 1;
+            gap >>= 2;
+            if(gap == 0)gap = 1;
+        }
+
+        auto gap_fn = [&](){
+            if constexpr(GapType == ShellGapType::Div2) {
+                gap >>= 1;
+            }else if constexpr(GapType == ShellGapType::Knuth){
+                gap = gap / 3;
+            }else if constexpr(GapType == ShellGapType::Hibbard){
+                gap >>= 1;
+            }
+        };
+
+        while(gap > 0){
             for(size_t begin_pos = 0;begin_pos < gap;++begin_pos){
                 for(size_t c_begin = begin_pos + gap;c_begin < len;c_begin += gap){
                     IterType s_begin = begin + c_begin;
@@ -126,7 +156,7 @@ namespace alib5::algo::sort{
                     *j = std::move(val);
                 }
             }
-            gap >>= 1;
+            gap_fn();
         }
     }
 
