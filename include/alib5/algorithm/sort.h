@@ -15,7 +15,12 @@
 #include <utility>
 #include <iterator>
 #include <vector>
+#ifndef ALIB5_ALGO_DISABLE_ENTERTAIN
 #include <random>
+#include <chrono>
+#include <thread>
+#include <condition_variable>
+#endif
 
 namespace alib5::algo::sort{
     template<class T> using default_compare = std::less<T>;
@@ -568,10 +573,13 @@ namespace alib5::algo::sort{
         }
     }
 
+    // 娱乐算法
+    #ifndef ALIB5_ALGO_DISABLE_ENTERTAIN
     /// @brief 猴子排序,交换版本,主要是shuffle无法进行inject
     /// 建议inject函数加入一个超时检测然后 throw exception,这样外部就可以捕捉异常了
+    /// 同时建议swapbetchecks为奇数,不然只有两个元素时换了一轮和没有一样
     template<
-            size_t SwapsBetweenChecks = 8,
+            size_t SwapsBetweenChecks = 31,
             IsIterator IterType,
             IsCompareFn<typename std::iterator_traits<IterType>::value_type>  CompareFn,
             IsInjectFn InjectFn = std::nullptr_t
@@ -617,6 +625,49 @@ namespace alib5::algo::sort{
             }
         }
     }
+    
+    /// @brief 睡眠排序,真的用的是系统睡眠
+    template<
+            class TimerBasic = std::chrono::milliseconds,
+            size_t MultiplyBase = 1,
+            IsIterator IterType
+        > 
+    void sleep(
+        IterType begin,
+        IterType end,
+        bool reverse = false
+    ){
+        static_assert(requires{(size_t)(*begin);},"Data must be able to be casted to double!");
+        if(begin == end)return;
+
+        std::mutex mtx;
+        bool ready = false;
+        std::condition_variable cv;
+        std::vector<std::jthread> threads;
+        IterType fill = reverse ? end-1 : begin;
+
+        for(IterType a = begin;a != end;++a){
+            threads.emplace_back([reverse,&fill,time = (size_t)(*a),data = std::move(*a),&ready,&cv,&mtx]{
+                {
+                    std::unique_lock<std::mutex> lock(mtx);
+                    cv.wait(lock,[&ready]{ return ready; });
+                }
+                std::this_thread::sleep_for(TimerBasic((size_t)time * MultiplyBase));
+                {
+                    std::lock_guard<std::mutex> lock(mtx);
+                    *fill = std::move(data);
+                    if(reverse) --fill;
+                    else ++fill;
+                }
+            });
+        }
+        {
+            std::unique_lock<std::mutex> lock(mtx);
+            ready = true;
+            cv.notify_all();
+        }
+    }
+    #endif
 }
 
- #endif
+#endif
