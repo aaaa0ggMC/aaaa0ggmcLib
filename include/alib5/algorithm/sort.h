@@ -4,7 +4,7 @@
  * @brief 各种排序算法，在reverse=false的情况下，若使用defcompare，即arg1 < arg2,保证升序 \ 
  * 每个算法是怎么测试的可以看docs/aalgorithm.md查看情况
  * @version 5.0
- * @date 2026/03/25
+ * @date 2026/03/26
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -15,6 +15,7 @@
 #include <utility>
 #include <iterator>
 #include <vector>
+#include <random>
 
 namespace alib5::algo::sort{
     template<class T> using default_compare = std::less<T>;
@@ -242,6 +243,154 @@ namespace alib5::algo::sort{
         }
     }
 
+    /// @brief 依旧冒泡优化
+    template<IsIterator IterType,
+            IsCompareFn<typename std::iterator_traits<IterType>::value_type>  CompareFn,
+            IsInjectFn InjectFn = std::nullptr_t
+        > 
+    void odd_even(
+        IterType begin,
+        IterType end,
+        CompareFn&& i_compare,
+        bool reverse = false,
+        InjectFn && i_inject = nullptr
+    ){
+        auto compare = wrap_compare(std::forward<CompareFn>(i_compare));
+        auto inject = wrap_inject(std::forward<InjectFn>(i_inject));
+        if(begin == end)return;
+        bool swapped = true;
+    
+        while(swapped){
+            swapped = false;
+            // 偶数对
+            for(IterType i = begin;i < end - 1;i += 2){
+                if(compare(*(i + 1),*i,reverse)){
+                    std::swap(*(i+1),*i);
+                    inject(std::distance(begin,i+1), std::distance(begin,i));
+                    swapped = true;
+                }
+            }
+            for(IterType i = begin + 1;i < end - 1;i += 2){
+                if(compare(*(i + 1),*i,reverse)){
+                    std::swap(*(i+1),*i);
+                    inject(std::distance(begin,i+1), std::distance(begin,i));
+                    swapped = true;
+                }
+            }
+        }
+    }
+
+    /// @brief 树精排序
+    // a > b 往前走, a < b 交换,往后走
+    template<IsIterator IterType,
+            IsCompareFn<typename std::iterator_traits<IterType>::value_type>  CompareFn,
+            IsInjectFn InjectFn = std::nullptr_t
+        > 
+    void gnome(
+        IterType begin,
+        IterType end,
+        CompareFn&& i_compare,
+        bool reverse = false,
+        InjectFn && i_inject = nullptr
+    ){
+        auto compare = wrap_compare(std::forward<CompareFn>(i_compare));
+        auto inject = wrap_inject(std::forward<InjectFn>(i_inject));
+        if(begin == end)return;
+        
+        IterType current = begin;
+        while(current < end - 1){
+            if(compare(*(current + 1),*current,reverse)){
+                std::swap(*current,*(current + 1));
+                inject(std::distance(begin,current),std::distance(begin,current + 1));
+                if(current != begin)--current;
+                else ++current;
+            }else ++current;
+        }
+    }
+
+    /// @brief 依旧冒泡改良,梳排序
+    /// 选择了一个固定步长比例 1.247
+    template<
+        float GapFactor = 1.247f,
+        IsIterator IterType,
+        IsCompareFn<typename std::iterator_traits<IterType>::value_type>  CompareFn,
+        IsInjectFn InjectFn = std::nullptr_t
+    > 
+    void comb(
+        IterType begin,
+        IterType end,
+        CompareFn&& i_compare,
+        bool reverse = false,
+        InjectFn && i_inject = nullptr
+    ){
+        static_assert(GapFactor > 1, "Gap factor is required to be bigger than 1!");
+        auto compare = wrap_compare(std::forward<CompareFn>(i_compare));
+        auto inject = wrap_inject(std::forward<InjectFn>(i_inject));
+        if(begin == end)return;
+        size_t len = std::distance(begin,end);
+        size_t gap = len;
+
+        bool swapped = true;
+        while(gap > 1 || swapped){
+            swapped = false;
+            gap /= GapFactor;
+            if(gap < 1)gap = 1;
+
+            for(IterType i = begin;i < end - gap;++i){
+                if(compare(*(i + gap), *i, reverse)){
+                    std::swap(*i, *(i + gap));
+                    inject(std::distance(begin, i), std::distance(begin, i + gap));
+                    swapped = true;
+                }
+            }
+        }
+    }
+
+    /// @brief 鸡尾酒排序,左边冒泡一次右边冒泡一次
+    /// 简单优化:swappable,没有swappable便说明排序完毕了
+    template<IsIterator IterType,
+        IsCompareFn<typename std::iterator_traits<IterType>::value_type>  CompareFn,
+        IsInjectFn InjectFn = std::nullptr_t
+    > 
+    void cocktail(
+        IterType begin,
+        IterType end,
+        CompareFn&& i_compare,
+        bool reverse = false,
+        InjectFn && i_inject = nullptr
+    ){
+        auto compare = wrap_compare(std::forward<CompareFn>(i_compare));
+        auto inject = wrap_inject(std::forward<InjectFn>(i_inject));
+        if(begin == end)return;
+        bool swapped = true;
+    
+        IterType high_sorted = end;
+        IterType low_sorted = begin;
+        while(low_sorted < high_sorted && swapped){
+            swapped = false;
+
+            for(IterType i_current = low_sorted;i_current < high_sorted - 1;++i_current){
+                if(compare(*(i_current+1),*i_current,reverse)){
+                    std::swap(*i_current,*(i_current+1));
+                    inject(std::distance(begin,i_current),std::distance(begin,i_current + 1));
+                    swapped = true;
+                }
+            }
+            --high_sorted;
+            // 这里也可以提前剪枝
+            if(!swapped) [[unlikely]] break;
+
+            for(IterType i_current = high_sorted - 1;i_current > low_sorted;--i_current){
+                if(compare(*i_current,*(i_current-1),reverse)){
+                    std::swap(*i_current,*(i_current-1));
+                    inject(std::distance(begin,i_current),std::distance(begin,i_current - 1));
+                    swapped = true;
+                }
+            }
+            ++low_sorted;
+        }
+    }
+
     /// @brief 快排Lomuto分区方式
     /// @par 算法规律记录
     /// @code
@@ -416,6 +565,56 @@ namespace alib5::algo::sort{
 
             PartitionMethod::partition(low,high,compare,
                         reverse,inject,stack,begin,end);
+        }
+    }
+
+    /// @brief 猴子排序,交换版本,主要是shuffle无法进行inject
+    /// 建议inject函数加入一个超时检测然后 throw exception,这样外部就可以捕捉异常了
+    template<
+            size_t SwapsBetweenChecks = 8,
+            IsIterator IterType,
+            IsCompareFn<typename std::iterator_traits<IterType>::value_type>  CompareFn,
+            IsInjectFn InjectFn = std::nullptr_t
+        > 
+    void bozo(
+        IterType begin,
+        IterType end,
+        CompareFn&& i_compare,
+        bool reverse = false,
+        InjectFn && i_inject = nullptr
+    ){
+        auto compare = wrap_compare(std::forward<CompareFn>(i_compare));
+        auto inject = wrap_inject(std::forward<InjectFn>(i_inject));
+        if(begin == end)return;
+        bool mess = true;
+
+        // 种子
+        std::random_device rd;
+        // 和意味
+        std::mt19937 generator(rd());
+        // 左闭右闭
+        std::uniform_int_distribution<size_t> dist(0,std::distance(begin,end) - 1);
+
+        while(true){
+            // 检查顺序
+            mess = false;
+            for(IterType i = begin;i < end-1;++i){
+                if(compare(*(i+1),*i,reverse)){
+                    mess = true;
+                    break;
+                }
+            }
+            if(!mess)break;
+
+            // 随机交换
+            for(size_t i = 0;i < SwapsBetweenChecks;++i){
+                size_t a = dist(generator);
+                size_t b = dist(generator);
+                while(b == a)[[unlikely]] b = dist(generator);
+
+                std::swap(*(begin + b),*(begin + a));
+                inject(b,a);
+            }
         }
     }
 }

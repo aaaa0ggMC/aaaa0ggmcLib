@@ -30,7 +30,7 @@
     - [执行结果](#执行结果-5)
   - [快排+Lomuto分区策略](#快排lomuto分区策略)
     - [基础信息](#基础信息-6)
-  - [Code](#code-6)
+    - [Code](#code-6)
     - [执行结果](#执行结果-6)
   - [快排+Hoare分区策略](#快排hoare分区策略)
     - [基础信息](#基础信息-7)
@@ -314,7 +314,7 @@ Progress: 20/20 (100%) 5867.59ms
 ### 基础信息
 - 没啥
 - 期待O(N logN)
-## Code
+### Code
 ```cpp
 using namespace algo::sort;
 quick<PartitionLomuto>(wait_sort.begin(), wait_sort.end(),std::less<int>());
