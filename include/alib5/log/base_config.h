@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 各种配置文件
  * @version 0.1
- * @date 2026/02/03
+ * @date 2026/03/26
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -79,6 +79,8 @@ namespace alib5{
         /// @brief 背压模式的阈值，阈值 = 下面的倍率 * 一次性能取出最大值 * 消费者数量，默认为 4
         /// @note  其实背压下相当于主线程也变成了一个消费者，每次push_message执行一次fetch
         unsigned int back_pressure_multiply;
+        /// @brief 最大能缓存的消息数量,超过时再加入新的消息将会执行一个残酷的策略(drop half)
+        unsigned int maximum_message_count;
 
         /// 构造默认配置
         LoggerConfig();

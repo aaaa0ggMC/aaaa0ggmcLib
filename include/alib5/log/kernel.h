@@ -2,7 +2,7 @@
 * @brief 与日志有关的函数库
 * @author aaaa0ggmc
 * @last-date 2025/04/04
-* @date 2026/03/23 
+* @date 2026/03/26 
 * @version 5.0
 * @copyright Copyright(C)2025
 ********************************
@@ -475,6 +475,7 @@ namespace alib5{
         fetch_message_count_max = consumer_message_default_count;
         back_pressure_multiply = 4; 
         enable_back_pressure = false;
+        maximum_message_count = 100'000;
     }
 
     template<CanAccessItem T> inline bool Logger::safe_remove_mod(

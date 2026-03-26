@@ -292,6 +292,13 @@ bool Logger::push_message_pmr(int level,std::string_view head,std::pmr::string &
             std::lock_guard<std::mutex> lock(msg_lock);
             messages.emplace_back(std::move(msg));
             msg_sz = message_size.fetch_add(1,std::memory_order::relaxed) + 1;
+
+            /// 开启drop策略
+            if(msg_sz > config.maximum_message_count) [[unlikely]] {
+                messages.erase(messages.begin(),messages.begin() + config.maximum_message_count / 2);
+                message_size.store(messages.size());
+                msg_sz = messages.size();
+            }
         }
         msg_semaphore.release();
 

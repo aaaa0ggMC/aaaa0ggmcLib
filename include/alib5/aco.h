@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 提供简单的和协程相关的支持
  * @version 5.0
- * @date 2026/03/04
+ * @date 2026/03/26
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -50,9 +50,24 @@ namespace alib5::co{
         Task(gen_t && t)
         :handle(std::move(t)){}
 
-        template<class Fn,class... Args> Task(Fn && t,Args&&... args)
-        requires (!std::is_same_v<std::remove_cvref_t<Fn>, Task>)
+        template<class Fn, class... Args>
+        requires (!std::is_same_v<std::remove_cvref_t<Fn>, Task> && 
+                std::is_lvalue_reference_v<Fn>)
+        Task(Fn&& t, Args&&... args)
         :handle(std::forward<Fn>(t)(std::forward<Args>(args)...)){}
+
+        template<class Fn, class... Args>
+        requires (!std::is_same_v<std::remove_cvref_t<Fn>, Task> && 
+                !std::is_lvalue_reference_v<Fn> && 
+                requires(Fn f) { +f; })
+        Task(Fn&& t, Args&&... args)
+        :handle((+t)(std::forward<Args>(args)...)){}
+
+        template<class Fn, class... Args>
+        requires (!std::is_same_v<std::remove_cvref_t<Fn>, Task> && 
+                !std::is_lvalue_reference_v<Fn> && 
+                !requires(Fn f) { +f; })
+        Task(Fn&& t, Args&&... args) = delete("This may cause coroutine break!");
 
         bool should_next(){
             if(!inited)return true;
