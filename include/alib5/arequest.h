@@ -61,15 +61,18 @@ namespace alib5{
                     // 迅速偷取
                     {
                         std::scoped_lock locks(producer_mutex,consumer_mutex);
-                        request_list_consumer = std::move(request_list_pending);
-                        consumer_batches = std::move(producer_batches);
+                        if(consumer_empty.load()){
+                            request_list_consumer = std::move(request_list_pending);
+                            consumer_batches = std::move(producer_batches);
 
-                        request_list_pending.clear();
-                        producer_batches.clear();
+                            request_list_pending.clear();
+                            producer_batches.clear();
+                            
+                            // 无论如何迅速走开
+                            consumer_empty.store(false, std::memory_order_release);
+                            producer_empty.store(true, std::memory_order_release);
+                        }
                     }
-                    // 无论如何迅速走开
-                    consumer_empty.store(false, std::memory_order_release);
-                    producer_empty.store(true, std::memory_order_release);
                 }
                 // step2: 从消费者队列进行偷取
                 {

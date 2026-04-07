@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 一个简单的性能计算库，能确保数据大致准确，同时省的我每次都要写差不多的benchmark代码
  * @version 5.0
- * @date 2026/03/23
+ * @date 2026/04/07
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -15,23 +15,39 @@
 #include <sstream>
 #include <iomanip>
 #include <cmath>
-
-#ifndef ALIB_PERF_CLOCK_SOURCE
-#ifndef CLOCK_MONOTONIC_RAW
-#ifndef CLOCK_REALTIME_COARSE
-#define ALIB_PERF_CLOCK_SOURCE CLOCK_REALTIME
-#else
-#define ALIB_PERF_CLOCK_SOURCE CLOCK_REALTIME_COARSE
-#endif
-#else 
-#define ALIB_PERF_CLOCK_SOURCE CLOCK_MONOTONIC_RAW
-#endif 
-#endif
+#include <vector>
+#include <type_traits>
+#include <limits>
 
 namespace alib5{
-    /// @brief 进行热身的每轮次数
-    constexpr uint32_t warm_up_per_run_times = 1'0000;
-    /// @brief 最低热身时长
+
+    /**
+     * @brief 阻止编译器优化掉某个变量。使用GCC/Clang的内联汇编实现，确保在GCC下绝对可用。
+     * 
+     * @tparam T 变量类型
+     * @param value 变量引用
+     */
+    template <typename T>
+    inline __attribute__((always_inline)) void do_not_optimize(T const& value){
+        #if defined(__GNUC__) || defined(__clang__)
+            asm volatile("" : : "g"(value) : "memory");
+        #else
+            static_cast<void>(value);
+        #endif
+    }
+
+    /**
+     * @brief 阻止编译器跨越此行进行内存优化（内存屏障）。
+     */
+    inline __attribute__((always_inline)) void clobber_memory(){
+        #if defined(__GNUC__) || defined(__clang__)
+            asm volatile("" : : : "memory");
+        #else
+            // 非 GCC/Clang 环境下的回退方案
+        #endif
+    }
+
+    /// @brief 进行热身的最低热身时长
     constexpr uint32_t warm_up_time_ms = 100;
     
     template<class T> concept IsValidBenchmarkFunction = requires(T & t){
@@ -40,16 +56,16 @@ namespace alib5{
 
     /// 单次运行结果
     struct SingleBenchmarkResult{
-        double timeSum; ///< 单次运行总时间
+        double timeSum; ///< 单次运行总时间 (ms)
         uint32_t times; ///< 运行总次数
 
-        // 由于benchmark只会出现在debug下，不为性能考虑
         /// 输出为string
         inline std::string str() const{
             std::stringstream ss;
-            ss << std::setw(9) << "TimeCost" << ":" << timeSum << "ms\n"
-               << std::setw(9) << "RunTimes" << ":" << times << "\n"
-               << std::setw(9) << "Average"  << ":" << timeSum/times;
+            ss << std::fixed << std::setprecision(6);
+            ss << std::setw(12) << "TimeCost" << " : " << timeSum << " ms\n"
+               << std::setw(12) << "RunTimes" << " : " << times << "\n"
+               << std::setw(12) << "Average"  << " : " << (times > 0 ? timeSum/times : 0) << " ms";
             return ss.str();
         }
 
@@ -68,7 +84,8 @@ namespace alib5{
 
         struct CalculateInfo{
             double sum = 0;
-            double shortest_avg = __DBL_MAX__,longest_avg = 0;
+            double shortest_avg = std::numeric_limits<double>::max();
+            double longest_avg = 0;
             uint32_t times = 0;
             double stddev = 0;
             double global_aver = 0;
@@ -77,6 +94,7 @@ namespace alib5{
 
         CalculateInfo calculate() const {
             CalculateInfo c;
+            if(results.empty()) return c;
 
             for(auto & t : results){
                 c.sum += t.timeSum;
@@ -88,50 +106,47 @@ namespace alib5{
                 double thisAver = t.timeSum / t.times;
 
                 if(thisAver > c.longest_avg)c.longest_avg = thisAver;
-                else if(thisAver < c.shortest_avg)c.shortest_avg = thisAver;
+                if(thisAver < c.shortest_avg)c.shortest_avg = thisAver;
 
                 c.stddev += (thisAver - c.global_aver)*(thisAver-c.global_aver) * t.times;
             }
-            c.stddev = std::sqrt(c.stddev / (c.times - 1));
-            c.cv = c.stddev / c.global_aver * 100;
+            c.stddev = std::sqrt(c.stddev / (c.times > 1 ? c.times - 1 : 1));
+            c.cv = (c.global_aver != 0) ? (c.stddev / c.global_aver * 100) : 0;
             return c;
         }
 
-        // 由于benchmark只会出现在debug下，不为性能考虑
         /// 输出为string
         inline std::string str() const{
             if(results.empty())return "";
             auto info = calculate();
 
-
             std::stringstream ss;
             auto norm_insert = [&](double v) -> auto& {
                 auto p = misc::normalize_elapse(v);
-                ss << std::setprecision(m_precision) <<  p.first << p.second;
+                ss << std::fixed << std::setprecision(m_precision) <<  p.first << p.second;
                 return ss;
             };
 
-            ss << "\n";
-            ss << "-----------------------" << "\n";
+            ss << "\n-----------------------" << "\n";
             ss << m_name << "\n\n";
-            ss << std::setprecision(8) << std::left;
-            ss << std::setw(16) << "TimeCost" << ":";
+            ss << std::left;
+            ss << std::setw(16) << "TimeCost" << " : ";
             norm_insert(info.sum) << "\n"
-               << std::setw(16) << "RunTimes" << ":" << info.times << "\n"
-               << std::setw(16) << "Average"  << ":";
+               << std::setw(16) << "RunTimes" << " : " << info.times << "\n"
+               << std::setw(16) << "Average"  << " : ";
             norm_insert(info.global_aver) << "\n"
-               << std::setw(16) << "ShortestAvgCall" << ":";
+               << std::setw(16) << "ShortestAvg" << " : ";
             norm_insert(info.shortest_avg) << "\n"
-               << std::setw(16) << "LongestAvgCall"  << ":";
+               << std::setw(16) << "LongestAvg"  << " : ";
             norm_insert(info.longest_avg) << "\n"
-               << std::setw(16) << "Stddev"  << ":" << std::setprecision(m_precision) << info.stddev << "\n"
-               << std::setw(16) << "CV"  << ":" << std::setprecision(4) << info.cv << "%";
+               << std::setw(16) << "Stddev"  << " : " << std::fixed << std::setprecision(m_precision) << info.stddev << "\n"
+               << std::setw(16) << "CV"      << " : " << std::fixed << std::setprecision(4) << info.cv << "%";
             ss << "\n--------------------------------";
             return ss.str();
         }
 
         BenchmarkResults& name(std::string name){
-            m_name = name;
+            m_name = std::move(name);
             return *this;
         }
 
@@ -160,73 +175,75 @@ namespace alib5{
         os << val.str();
         return os;
     }
-    inline std::ostream& operator<<(std::ostream & os,const BenchmarkResults val){
+    inline std::ostream& operator<<(std::ostream & os,const BenchmarkResults & val){
         os << val.str();
         return os;
     }
 
-    /// 简易的benchmark函数
+    /// 简易的benchmark类
     template<IsValidBenchmarkFunction Function> struct Benchmark{
         Function func;
 
         // 初始化benchmark函数
         Benchmark(Function f):func(std::move(f)){}
 
-        #pragma GCC push_options
-        #pragma GCC optimize("O0")
         /**
          * @brief 运行benchmark
          * 
-         * @param times 单次运行时长
-         * @param repeat 重复次数
+         * @param times 单次运行迭代次数
+         * @param repeat 重复运行组数
          * @return BenchmarkResults 
-         * @start-date 2025/11/08
          */
         inline BenchmarkResults run(uint32_t times,uint32_t repeat){
             BenchmarkResults rs;
 
-            /// 预热，同时计算出对volatile的修改
+            /// 预热：让 CPU 进入高频状态并预热缓存
             {
                 Clock clk;
-                timespec st;
                 clk.start();
-                uint64_t warmTimes = 0;
-                uint64_t sink = 0;
-                clock_gettime(ALIB_PERF_CLOCK_SOURCE,&st);
                 while(clk.get_all() < warm_up_time_ms){
-                    for(int i = 0; i < warm_up_per_run_times; ++i)sink += 1;
-                    warmTimes += warm_up_per_run_times;
-                    sink = 0;
+                    // 预热时执行一小部分迭代
+                    for(uint32_t i = 0; i < 100; ++i){
+                         if constexpr (std::is_void_v<std::invoke_result_t<Function>>) {
+                            func();
+                            clobber_memory();
+                        } else {
+                            auto r = func();
+                            do_not_optimize(r);
+                        }
+                    }
                 }
             }
 
-            for(uint32_t i = 0;i < repeat;++i){
+            rs.results.reserve(repeat);
+            for(uint32_t i = 0; i < repeat; ++i){
                 rs.results.push_back(single_run(times));
             }
 
             return rs;
         }
-        #pragma GCC pop_options
+
     private:
-        #pragma GCC push_options
-        #pragma GCC optimize("O0")
         /// 单次运行测试
         inline SingleBenchmarkResult single_run(uint32_t times){
-            SingleBenchmarkResult result = {0};
-            timespec st,ed;
-            clock_gettime(ALIB_PERF_CLOCK_SOURCE,&st);
-            for(uint32_t i = 0;i < times;++i){
-                func();
+            SingleBenchmarkResult result = {0, times};
+            
+            auto st = std::chrono::steady_clock::now();
+            for(uint32_t i = 0; i < times; ++i){
+                if constexpr (std::is_void_v<std::invoke_result_t<Function>>) {
+                    func();
+                    clobber_memory();
+                } else {
+                    auto res = func();
+                    do_not_optimize(res);
+                }
             }
-            clock_gettime(ALIB_PERF_CLOCK_SOURCE,&ed);
-            result.timeSum = (ed.tv_sec - st.tv_sec) * 1000 + (ed.tv_nsec - st.tv_nsec) / 1'000'000.0;
-            result.times = times;
+            auto ed = std::chrono::steady_clock::now();
+            
+            result.timeSum = std::chrono::duration<double, std::milli>(ed - st).count();
             return result;
         }
-        #pragma GCC pop_options
     };
 }
-
-
 
 #endif
