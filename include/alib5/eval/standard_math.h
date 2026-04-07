@@ -52,7 +52,7 @@ namespace alib5::eval::math{
         );
         op.targets.emplace_back(
             typename Operation<ValueType>::OpTarget{
-                b
+                *real_b
             }
         );
         op.op.id = conf_plus_index;
