@@ -127,7 +127,7 @@ namespace alib5{
         ,type(other.type){
             this->integer = other.integer; 
         }
-        Value(Value&& other) noexcept 
+        Value(Value&& other) ALIB5_NOEXCEPT 
         :data(std::move(other.data))
         ,data_dirt(other.data_dirt)
         ,type(other.type)
@@ -156,7 +156,7 @@ namespace alib5{
             return *this;
         }
 
-        Value& operator=(Value&& other) noexcept {
+        Value& operator=(Value&& other) ALIB5_NOEXCEPT {
             if(this == &other) [[unlikely]] return *this;
             data = std::move(other.data);
             data_dirt = other.data_dirt;
@@ -203,7 +203,7 @@ namespace alib5{
             :children(other.children, a)
             ,object_mapper(other.object_mapper, a){}
 
-            Object(Object&& other) noexcept
+            Object(Object&& other) ALIB5_NOEXCEPT
             :children(std::move(other.children))
             ,object_mapper(std::move(other.object_mapper)){}
 
@@ -218,7 +218,7 @@ namespace alib5{
                 return *this;
             }
 
-            Object& operator=(Object&& other) noexcept {
+            Object& operator=(Object&& other) ALIB5_NOEXCEPT {
                 if(this == &other) [[unlikely]] return *this;
                 children = std::move(other.children);
                 object_mapper = std::move(other.object_mapper);
@@ -343,7 +343,7 @@ namespace alib5{
             Array(const Array& other, std::pmr::memory_resource* a)
             :values(other.values, a){}
 
-            Array(Array&& other) noexcept
+            Array(Array&& other) ALIB5_NOEXCEPT
             :values(std::move(other.values)){}
 
             Array(Array&& other, std::pmr::memory_resource* a)
@@ -355,7 +355,7 @@ namespace alib5{
                 return *this;
             }
 
-            Array& operator=(Array&& other) noexcept {
+            Array& operator=(Array&& other) ALIB5_NOEXCEPT {
                 if(this == &other) [[unlikely]] return *this;
                 values = std::move(other.values);
                 return *this;
@@ -488,7 +488,7 @@ namespace alib5{
         ,data(clone_data(other.data,other.allocator)){
         }
         
-        AData(AData&& other) noexcept : allocator(other.allocator){
+        AData(AData&& other) ALIB5_NOEXCEPT : allocator(other.allocator){
             *this = std::move(other);
         }
         AData(const AData& other, std::pmr::memory_resource* __a):allocator(__a){

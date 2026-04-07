@@ -1,7 +1,7 @@
 /**@file aparser.h
 * @brief 简单的命令行词法解析器，上一个版本语法比较诡异
 * @author aaaa0ggmc
-* @date 2026/02/06
+* @date 2026/04/07
 * @version 5.0
 * @copyright Copyright(c) 2026 
 */
@@ -32,7 +32,7 @@ namespace alib5{
         /// 对一个完整的命令进行解析
         void ALIB5_API parse(std::string_view cmd,bool slice_args = true);
         /// 可以复用为命令行解释器
-        void ALIB5_API from_args(int argc,const char * argv[]) noexcept;
+        void ALIB5_API from_args(int argc,const char * argv[]) ALIB5_NOEXCEPT;
 
         /// 对头进行匹配
         inline bool match(std::string_view chead){return chead == head;}
@@ -168,13 +168,13 @@ namespace alib5{
                 cursor(beg){}
 
                 /// 判断当前cursor是否有效
-                operator bool() const noexcept {
+                operator bool() const ALIB5_NOEXCEPT {
                     /// 理论上可以走到end(),因为subspan不包含end
                     return matched && cursor <= data.size();    
                 }
                 
                 /// 组合cursor提供 || 语法
-                Cursor operator ||(const Cursor & c) noexcept {
+                Cursor operator ||(const Cursor & c) ALIB5_NOEXCEPT {
                     panic_debug((intptr_t)&(c.m_analyser) != (intptr_t)&(m_analyser),"Conflict analyser source!");
                     if(c.matched && !matched){
                         return c;
@@ -183,7 +183,7 @@ namespace alib5{
                 }
 
                 /// 获取当前的“头”
-                inline Value head() noexcept {return data.empty()? "" : data[0];}
+                inline Value head() ALIB5_NOEXCEPT {return data.empty()? "" : data[0];}
                 /// 终止事务
                 inline void abort(){
                     matched = false;
@@ -207,16 +207,16 @@ namespace alib5{
                 inline bool reached_end(){ return cursor >= data.size(); }
 
                 /// 返回一个失效的analyser
-                Analyser ALIB5_API invalid() noexcept;
+                Analyser ALIB5_API invalid() ALIB5_NOEXCEPT;
 
                 /// 步进下一条数据
-                Value ALIB5_API next() noexcept;
+                Value ALIB5_API next() ALIB5_NOEXCEPT;
                 /// 步进下一条数据
-                std::pair<Value,Value> ALIB5_API next_value_bundle(std::string_view opt) noexcept;
+                std::pair<Value,Value> ALIB5_API next_value_bundle(std::string_view opt) ALIB5_NOEXCEPT;
                 /// 尝试访问下一条数据
-                Value ALIB5_API peek() const noexcept;
+                Value ALIB5_API peek() const ALIB5_NOEXCEPT;
                 /// 数据组
-                std::pair<Value,Value> ALIB5_API peek_value_bundle(std::string_view opt) noexcept;
+                std::pair<Value,Value> ALIB5_API peek_value_bundle(std::string_view opt) ALIB5_NOEXCEPT;
 
                 /// 跳过数据
                 inline void skip(size_t n = 1){
@@ -226,10 +226,10 @@ namespace alib5{
                 }
 
                 /// 上传数据，同时生成子analyser可用于进行进一步的访问
-                Analyser ALIB5_API commit() noexcept;
+                Analyser ALIB5_API commit() ALIB5_NOEXCEPT;
 
                 /// 这里是为了方便直接生成sub analyser而不一定需要commit
-                Analyser ALIB5_API sub() noexcept;
+                Analyser ALIB5_API sub() ALIB5_NOEXCEPT;
             };
 
             Analyser(Parser & p):
@@ -237,7 +237,7 @@ namespace alib5{
             inputs(parser.args.begin(),parser.args.end(),parser.resource){}
 
             /// 直接转换，方便直接进行操作
-            inline Cursor as_cursor(size_t beg = 0) noexcept {
+            inline Cursor as_cursor(size_t beg = 0) ALIB5_NOEXCEPT {
                 if(inputs.size() <= beg + 1) {
                     return Cursor{*this, inputs, 0, false};
                 }
@@ -265,15 +265,15 @@ namespace alib5{
             }
 
             /// 匹配完整的option
-            Cursor ALIB5_API with_opt(std::string_view opt,size_t beg = 1) noexcept;
+            Cursor ALIB5_API with_opt(std::string_view opt,size_t beg = 1) ALIB5_NOEXCEPT;
             /// 匹配前缀，比如 data="--port" opt="="
             /// 将会匹配 "--port=xxx" "--port = xxx" "--port xxx" "--port =xxx"
             /// 如果希望一定要 "--port="连体并且不认"--port xxx"可以设置 data="-port=" opt=""
-            Cursor ALIB5_API with_prefix(std::string_view data,std::string_view opt = "",size_t beg = 1) noexcept;
+            Cursor ALIB5_API with_prefix(std::string_view data,std::string_view opt = "",size_t beg = 1) ALIB5_NOEXCEPT;
         
             //// 下面是一些包装函数 ////
             /// 支持多个option
-            inline Cursor with_opts(std::span<const std::string_view> opts,size_t beg = 1) noexcept{
+            inline Cursor with_opts(std::span<const std::string_view> opts,size_t beg = 1) ALIB5_NOEXCEPT{
                 for(auto v : opts){
                     if(auto c = with_opt(v,beg))return c;
                 }
@@ -284,11 +284,11 @@ namespace alib5{
                     false
                 };
             }
-            inline Cursor with_opts(std::initializer_list<std::string_view> opts,size_t beg = 1) noexcept{
+            inline Cursor with_opts(std::initializer_list<std::string_view> opts,size_t beg = 1) ALIB5_NOEXCEPT{
                 return with_opts(std::span<const std::string_view>(opts.begin(),opts.end()),beg);
             }
             /// 支持多个prefix
-            inline Cursor with_prefixes(std::span<const std::string_view> prefixes,std::string_view opt_str,size_t beg = 1) noexcept{
+            inline Cursor with_prefixes(std::span<const std::string_view> prefixes,std::string_view opt_str,size_t beg = 1) ALIB5_NOEXCEPT{
                 for(auto v : prefixes){
                     if(auto c = with_prefix(v,opt_str,beg))return c;
                 }
@@ -299,7 +299,7 @@ namespace alib5{
                     false
                 };
             }
-            inline Cursor with_prefixes(std::initializer_list<std::string_view> prefixes,std::string_view opt_str,size_t beg = 1) noexcept{
+            inline Cursor with_prefixes(std::initializer_list<std::string_view> prefixes,std::string_view opt_str,size_t beg = 1) ALIB5_NOEXCEPT{
                 return with_prefixes(std::span(prefixes.begin(),prefixes.end()),opt_str,beg);
             }
 

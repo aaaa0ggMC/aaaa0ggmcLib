@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 线性存储类，目前使用vector，后期可以变成sparse_set啥的
  * @version 0.1
- * @date 2026/03/18
+ * @date 2026/04/07
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -224,7 +224,7 @@ namespace alib5::ecs::detail{
         ,available_bits(other.available_bits)
         {}
 
-        inline LinearStorage(LinearStorage&& other) noexcept
+        inline LinearStorage(LinearStorage&& other) ALIB5_NOEXCEPT
         :data(std::move(other.data))
         ,free_elements(std::move(other.free_elements))
         ,available_bits(std::move(other.available_bits)) 
@@ -245,7 +245,7 @@ namespace alib5::ecs::detail{
             return *this;
         }
 
-        LinearStorage& operator=(LinearStorage&& other) noexcept{
+        LinearStorage& operator=(LinearStorage&& other) ALIB5_NOEXCEPT{
             if (this == &other) [[unlikely]] return *this;
             
             data = std::move(other.data);

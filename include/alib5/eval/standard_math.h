@@ -33,15 +33,11 @@ namespace alib5::eval::math{
     // 一些符号重载
     template<class ValueType>
     Expression<ValueType> operator+(const Symbol<ValueType> & a,const Symbol<ValueType> & b){
+        [[unlikely]] panic_if(&(a.ctx) != &(b.ctx),"Context not match!");
+        
         Expression<ValueType> exp(a.ctx);
-        const Symbol<ValueType> * real_b = &b;
         // 往a的context里面也注入b的信息?
         // 但是值信息呢
-        if(&(a.ctx) != &(b.ctx)) [[unlikely]] {
-            Symbol<ValueType> new_b(b.get_name(),a.ctx);
-            new_b() = b();
-            real_b = &new_b;
-        }
         // 这个是完全新的内容因此直接加入就行了,不需要考虑cache
         Operation<ValueType> op(a.ctx.get_allocator());
         op.output_index = 0;
@@ -52,7 +48,7 @@ namespace alib5::eval::math{
         );
         op.targets.emplace_back(
             typename Operation<ValueType>::OpTarget{
-                *real_b
+                b
             }
         );
         op.op.id = conf_plus_index;

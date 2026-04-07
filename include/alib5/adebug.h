@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 目标是提供简单可用的错误判断，适合我这种一般不调试的人
  * @version 5.0
- * @date 2026/02/05
+ * @date 2026/04/07
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -15,6 +15,14 @@
 #include <source_location>
 #include <assert.h>
 #include <format>
+
+#ifndef ALIB5_NOEXCEPT
+#ifdef ALIB5_PANIC_USE_EXCEPTION
+#define ALIB5_NOEXCEPT
+#else 
+#define ALIB5_NOEXCEPT noexcept
+#endif
+#endif
 
 #ifndef ADEBUG_INTERNAL_PANIC_FMT
 #define ADEBUG_INTERNAL_PANIC_FMT
@@ -45,7 +53,12 @@ constexpr const char * alib_g3_internal_vpanic_if_fmt = "\nCondition: {}";
 #endif
 
 #ifndef ADEBUG_INTERNAL_PANIC_ABORT
+#ifdef ALIB5_PANIC_USE_EXCEPTION
+#include <exception>
+#define ADEBUG_INTERNAL_PANIC_ABORT throw std::runtime_error(final_str)
+#else
 #define ADEBUG_INTERNAL_PANIC_ABORT std::abort() 
+#endif
 #endif
 
 #ifndef ADEBUG_NO_OUTPUT

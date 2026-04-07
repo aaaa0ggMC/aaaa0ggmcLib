@@ -26,7 +26,7 @@ Router::Node Router::Node::Group(std::string_view name,std::optional<RouterNode:
     return {n};
 }
 
-bool Router::add_route(std::span<const std::string_view> path,RouterNode::Dispatcher dispatcher) noexcept {
+bool Router::add_route(std::span<const std::string_view> path,RouterNode::Dispatcher dispatcher) ALIB5_NOEXCEPT {
     if(path.empty())return false;
     RouterNode root;
     auto name = path[0];
@@ -59,7 +59,7 @@ bool Router::add_route(std::span<const std::string_view> path,RouterNode::Dispat
     return add_route(str::unescape(name),root);
 }
 
-bool Router::add_route(std::string_view node_name,const RouterNode & nodes) noexcept {
+bool Router::add_route(std::string_view node_name,const RouterNode & nodes) ALIB5_NOEXCEPT {
     std::deque<const RouterNode*> current_layer;
     std::deque<const RouterNode*> next_layer;
 

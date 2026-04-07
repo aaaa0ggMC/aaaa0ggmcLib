@@ -18,7 +18,7 @@ using namespace alib5;
 #ifdef _WIN32
 namespace {
     struct AutoFix {
-        AutoFix() noexcept {
+        AutoFix() ALIB5_NOEXCEPT {
             alib5::sys::enable_virtual_terminal();
         }
 
@@ -35,7 +35,7 @@ namespace {
 RuntimeErrorTriggerFn runtime_error_trigger = NULL;
 std::vector<RTErrorTriggerFnpp> runtime_error_triggers;
 
-void alib5::invoke_error(detail::ErrorCtx ctx,std::string_view data,Severity sv) noexcept{
+void alib5::invoke_error(detail::ErrorCtx ctx,std::string_view data,Severity sv) ALIB5_NOEXCEPT{
     RuntimeError rt{
         .id = ctx.id,
         .data = data,
@@ -50,16 +50,16 @@ void alib5::invoke_error(detail::ErrorCtx ctx,std::string_view data,Severity sv)
     }
 }
 
-void alib5::set_fast_error_callback(RuntimeErrorTriggerFn fn) noexcept{
+void alib5::set_fast_error_callback(RuntimeErrorTriggerFn fn) ALIB5_NOEXCEPT{
     runtime_error_trigger = fn;
 }
 
-void alib5::add_error_callback(RTErrorTriggerFnpp heavy_fn) noexcept{
+void alib5::add_error_callback(RTErrorTriggerFnpp heavy_fn) ALIB5_NOEXCEPT{
     runtime_error_triggers.emplace_back(heavy_fn);
 }
 
 #ifdef _WIN32
-void sys::enable_virtual_terminal() noexcept{
+void sys::enable_virtual_terminal() ALIB5_NOEXCEPT{
     HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD consoleMode;
     GetConsoleMode(hConsole, &consoleMode);
@@ -69,7 +69,7 @@ void sys::enable_virtual_terminal() noexcept{
 }
 #endif
 
-std::string_view sys::get_cpu_brand() noexcept{
+std::string_view sys::get_cpu_brand() ALIB5_NOEXCEPT{
     #ifdef _WIN32
     thread_local static CHAR tchData[1024] = {0};
     long lRet;
@@ -107,13 +107,13 @@ std::string_view sys::get_cpu_brand() noexcept{
     #endif
 }
 
-void io::TraverseConfig::build() noexcept{
+void io::TraverseConfig::build() ALIB5_NOEXCEPT{
     for(auto val : keep){
         allow[(int)val + 1] = true;
     }
 }
 
-io::FileEntry io::load_entry(std::string_view path,bool force_existence) noexcept {
+io::FileEntry io::load_entry(std::string_view path,bool force_existence) ALIB5_NOEXCEPT {
     io::FileEntry entry;
     std::error_code ec;
     auto s = std::filesystem::status(path, ec);
@@ -206,7 +206,7 @@ const io::FileEntry& io::FileEntry::operator[](std::string_view data) const{
     return it->second;
 }
 
-io::TraverseData io::traverse_files(std::string_view file_path,TraverseConfig cfg) noexcept{
+io::TraverseData io::traverse_files(std::string_view file_path,TraverseConfig cfg) ALIB5_NOEXCEPT{
     io::TraverseData ret;
     auto root = std::filesystem::path(file_path);
     if(root.is_relative()){
@@ -304,7 +304,7 @@ io::TraverseData io::traverse_files(std::string_view file_path,TraverseConfig cf
 }
 
 /// 返回格式化的当前时间
-std::string_view misc::get_time() noexcept {
+std::string_view misc::get_time() ALIB5_NOEXCEPT {
     static thread_local std::pmr::string buffer (ALIB5_DEFAULT_MEMORY_RESOURCE);
     static thread_local bool inited = [&]{
         buffer.reserve(conf_generic_string_reserve_size);
@@ -329,7 +329,7 @@ std::string_view misc::get_time() noexcept {
 }
 
 
-sys::ProgramMemUsage sys::get_prog_mem_usage() noexcept {
+sys::ProgramMemUsage sys::get_prog_mem_usage() ALIB5_NOEXCEPT {
     ProgramMemUsage usage {0, 0};
 #ifdef _WIN32
     PROCESS_MEMORY_COUNTERS pmc;
@@ -360,7 +360,7 @@ sys::ProgramMemUsage sys::get_prog_mem_usage() noexcept {
     return usage;
 }
 
-sys::GlobalMemUsage sys::get_global_mem_usage() noexcept {
+sys::GlobalMemUsage sys::get_global_mem_usage() ALIB5_NOEXCEPT {
     GlobalMemUsage ret {};
 
 #ifdef _WIN32
@@ -414,7 +414,7 @@ sys::GlobalMemUsage sys::get_global_mem_usage() noexcept {
     return ret;
 }
 
-std::string_view str::unescape(std::string_view in) noexcept {
+std::string_view str::unescape(std::string_view in) ALIB5_NOEXCEPT {
     static thread_local std::pmr::string buffer {ALIB5_DEFAULT_MEMORY_RESOURCE};
     buffer.clear();
 
@@ -502,7 +502,7 @@ std::string_view str::unescape(std::string_view in) noexcept {
     return buffer;
 }
 
-std::string_view str::escape(std::string_view in,bool ensure_ascii) noexcept {
+std::string_view str::escape(std::string_view in,bool ensure_ascii) ALIB5_NOEXCEPT {
     static thread_local std::pmr::string buffer {ALIB5_DEFAULT_MEMORY_RESOURCE};
     buffer.clear();
 
@@ -576,7 +576,7 @@ std::string_view str::trim(std::string_view input){
     return input.substr(head,tail - head + 1);
 }
 
-std::vector<std::string_view> str::split(std::string_view source,std::string_view sep) noexcept{
+std::vector<std::string_view> str::split(std::string_view source,std::string_view sep) ALIB5_NOEXCEPT{
     std::vector<std::string_view> vec;
     std::string_view finder = source;
     size_t step = sep.size();
@@ -608,7 +608,7 @@ std::pair<double,std::string_view> misc::normalize_elapse(double t){
     return std::pair(t,std::string_view(normalize_elapse_movers[mindex]));
 }
 
-std::string_view misc::format_duration(int secs) noexcept{
+std::string_view misc::format_duration(int secs) ALIB5_NOEXCEPT{
     static thread_local std::pmr::string buffer (ALIB5_DEFAULT_MEMORY_RESOURCE);
     static thread_local bool inited = [&]{
         buffer.reserve(conf_generic_string_reserve_size);

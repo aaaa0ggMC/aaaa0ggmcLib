@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 提供简单的和协程相关的支持
  * @version 5.0
- * @date 2026/03/26
+ * @date 2026/04/07
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -37,7 +37,7 @@ namespace alib5::co{
             inited = false;
         }
 
-        Task(Task&& other) noexcept 
+        Task(Task&& other) ALIB5_NOEXCEPT 
         :handle(std::move(other.handle)){
             panic_if(inited, "Coroutine has inited!");
             panic_if(other.inited, "Other's coroutine has inited!");
@@ -109,19 +109,19 @@ namespace alib5::co{
         Signal(const Signal&) = delete;
         Signal& operator=(const Signal&) = delete;
 
-        void fire() noexcept {
+        void fire() ALIB5_NOEXCEPT {
             m_state.store(true, std::memory_order_release);
         }
 
-        bool ready() const noexcept {
+        bool ready() const ALIB5_NOEXCEPT {
             return m_state.load(std::memory_order_acquire);
         }
 
-        explicit operator bool() const noexcept {
+        explicit operator bool() const ALIB5_NOEXCEPT {
             return ready();
         }
 
-        bool until() const noexcept {
+        bool until() const ALIB5_NOEXCEPT {
             return ready();
         }
     };
@@ -152,8 +152,8 @@ namespace alib5::co{
     class WaitGroup{
         std::atomic<int> m_count{0};
 
-        void add(int n) noexcept { m_count.fetch_add(n, std::memory_order_relaxed); }
-        void done() noexcept { m_count.fetch_sub(1, std::memory_order_acq_rel); }
+        void add(int n) ALIB5_NOEXCEPT { m_count.fetch_add(n, std::memory_order_relaxed); }
+        void done() ALIB5_NOEXCEPT { m_count.fetch_sub(1, std::memory_order_acq_rel); }
 
     public:
         class Guard; 
@@ -166,7 +166,7 @@ namespace alib5::co{
             explicit Guard(WaitGroup& wg) : m_wg(&wg){ m_wg->add(1); }
             ~Guard(){ if(m_wg)m_wg->done(); }
 
-            Guard(Guard&& other) noexcept : m_wg(other.m_wg){ other.m_wg = nullptr; }
+            Guard(Guard&& other) ALIB5_NOEXCEPT : m_wg(other.m_wg){ other.m_wg = nullptr; }
             Guard& operator=(Guard&&) = delete;
             Guard(const Guard&) = delete;
         };
@@ -174,10 +174,10 @@ namespace alib5::co{
 
         [[nodiscard]] Guard make_guard(){ return Guard(*this); }
 
-        bool ready() const noexcept { return m_count.load(std::memory_order_acquire) <= 0; }
-        bool until() const noexcept { return ready(); }
+        bool ready() const ALIB5_NOEXCEPT { return m_count.load(std::memory_order_acquire) <= 0; }
+        bool until() const ALIB5_NOEXCEPT { return ready(); }
 
-        bool reset() noexcept {
+        bool reset() ALIB5_NOEXCEPT {
             if(!ready())return false;
             m_count.store(0, std::memory_order_release); 
             return true;

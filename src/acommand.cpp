@@ -2,7 +2,7 @@
 
 using namespace alib5;
 
-std::string_view Command::CommandInput::validate(const std::unordered_set<std::string_view> & allow) const noexcept{
+std::string_view Command::CommandInput::validate(const std::unordered_set<std::string_view> & allow) const ALIB5_NOEXCEPT{
     for(auto v : opts[depth]){
         if(allow.find(v) == allow.end())return v;
     }
@@ -12,7 +12,7 @@ std::string_view Command::CommandInput::validate(const std::unordered_set<std::s
     return "";
 }
 
-pvalue_t Command::CommandInput::get(std::string_view d,int depth) const noexcept{
+pvalue_t Command::CommandInput::get(std::string_view d,int depth) const ALIB5_NOEXCEPT{
     if(depth < 0)depth = this->depth;
     if(depth >= prefixes.size())return false;
     auto it = prefixes[depth].find(d);

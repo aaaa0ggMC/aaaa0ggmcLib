@@ -1,7 +1,7 @@
 /**@file arouter.h
 * @brief 简单的路径分发器
 * @author aaaa0ggmc
-* @date 2026/02/03
+* @date 2026/04/07
 * @version 5.0
 * @copyright Copyright(c) 2026 
 */
@@ -144,24 +144,24 @@ namespace alib5{
             return Node{&root}.Group(name,dispatch);
         }
 
-        bool ALIB5_API add_route(std::string_view node_name,const RouterNode & nodes) noexcept;
+        bool ALIB5_API add_route(std::string_view node_name,const RouterNode & nodes) ALIB5_NOEXCEPT;
         /// @param remove_head 是否不关心第一个元素,这个关系到树的正确索引
         template<
             MatchSettings settings = default_match_settings,
             JudgeFn Judge,
             RoamerFn Roamer
-        >  DispatchResult match(panalyser_t parser,Judge && Fn,Roamer && Rn,bool remove_head) noexcept;
+        >  DispatchResult match(panalyser_t parser,Judge && Fn,Roamer && Rn,bool remove_head) ALIB5_NOEXCEPT;
         
         template<
             MatchSettings settings = default_match_settings,
             JudgeFn Judge,
             RoamerFn Roamer
-        > inline DispatchResult match(Parser & parser,Judge && Fn,Roamer && Rn,bool remove_head = true) noexcept{
+        > inline DispatchResult match(Parser & parser,Judge && Fn,Roamer && Rn,bool remove_head = true) ALIB5_NOEXCEPT{
             return match<settings>(parser.analyse(),std::forward<Judge>(Fn),std::forward<Roamer>(Rn),remove_head);
         }
 
         /// 实际上的版本
-        bool ALIB5_API add_route(std::span<const std::string_view> path,RouterNode::Dispatcher dispatcher) noexcept;
+        bool ALIB5_API add_route(std::span<const std::string_view> path,RouterNode::Dispatcher dispatcher) ALIB5_NOEXCEPT;
 
         /// 通过类似网络的方式添加数据
         /// 比如 path = "aaaa/{bbb}/ccc",可以用于可视化构建树,括号包起来为any,没包起来为full 
@@ -187,7 +187,7 @@ namespace alib5{
         Router::MatchSettings conf,
         JudgeFn Judge,
         RoamerFn Roamer 
-    > inline Router::DispatchResult Router::match(panalyser_t parser,Judge && Fn,Roamer && Rn,bool remove_head) noexcept{
+    > inline Router::DispatchResult Router::match(panalyser_t parser,Judge && Fn,Roamer && Rn,bool remove_head) ALIB5_NOEXCEPT{
         DispatchResult result;
         // 移除掉最开始的命令头
         // 一般为CLI的时候用到

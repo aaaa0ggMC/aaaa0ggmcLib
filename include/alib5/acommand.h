@@ -1,7 +1,7 @@
 /**@file acommand.h
 * @brief 简单的命令行解释器
 * @author aaaa0ggmc
-* @date 2026/02/03
+* @date 2026/04/07
 * @version 5.0
 * @copyright Copyright(c) 2026 
 */
@@ -77,10 +77,10 @@ namespace alib5{
             Command & cmd;
 
             /// 进行二次校验
-            ALIB5_API std::string_view validate(const std::unordered_set<std::string_view> & allow) const noexcept;
+            ALIB5_API std::string_view validate(const std::unordered_set<std::string_view> & allow) const ALIB5_NOEXCEPT;
 
             /// 获取value,depth为层次,小于0定位当前层级,大于最大层次返回pvalue_t(false)(invalid)
-            ALIB5_API pvalue_t get(std::string_view d,int depth = -1) const noexcept;
+            ALIB5_API pvalue_t get(std::string_view d,int depth = -1) const ALIB5_NOEXCEPT;
 
             /// 获取更加多层次的数据,返回对应数值以及找到的对应层级
             inline std::pair<pvalue_t,int> gets(std::string_view d,int begin = -1,int end = std::numeric_limits<int>::max()){
@@ -94,7 +94,7 @@ namespace alib5{
             }
 
             /// 获取key
-            inline pvalue_t key(std::string_view d) const noexcept{
+            inline pvalue_t key(std::string_view d) const ALIB5_NOEXCEPT{
                 auto it = keys.find(d);
                 if(it != keys.end()){
                     return it->second;
@@ -102,7 +102,7 @@ namespace alib5{
                 return false;
             }
 
-            inline bool check(std::string_view d,int depth = -1) const noexcept{
+            inline bool check(std::string_view d,int depth = -1) const ALIB5_NOEXCEPT{
                 if(depth < 0)depth = this->depth;
                 if(depth >= opts.size())return false;
                 return opts[depth].find(d) != opts[depth].end();
@@ -184,7 +184,7 @@ namespace alib5{
                 return h;
             }
 
-            template<class CTX> CTX&& self_forward(CTX&& ctx) noexcept;
+            template<class CTX> CTX&& self_forward(CTX&& ctx) ALIB5_NOEXCEPT;
         };
 
         /// 生成帮助信息
@@ -292,7 +292,7 @@ namespace alib5{
 };
 
 namespace alib5{
-    template<bool with_color> template<class CTX> inline CTX&& Command::HelpMessage<with_color>::self_forward(CTX&& ctx) noexcept{
+    template<bool with_color> template<class CTX> inline CTX&& Command::HelpMessage<with_color>::self_forward(CTX&& ctx) ALIB5_NOEXCEPT{
         constexpr auto select_color = []<class T>(T && val){
             if constexpr(with_color){
                 return std::forward<T>(val);

@@ -1,7 +1,7 @@
 /**@file autil.h
 * @brief 工具库，提供实用函数
 * @author aaaa0ggmc
-* @date 2026/03/23
+* @date 2026/04/07
 * @version 5.0
 * @copyright Copyright(c) 2026
 */
@@ -37,11 +37,20 @@
 #include <vulkan/vulkan.h>
 #endif
 
+#ifndef ALIB5_NOEXCEPT
+#ifdef ALIB5_PANIC_USE_EXCEPTION
+#define ALIB5_NOEXCEPT
+#else 
+#define ALIB5_NOEXCEPT noexcept
+#endif
+#endif
+
+
 /// 虽然其实这个没啥用，但是这个还是指定了默认情况下alib5使用的内存资源
 #define ALIB5_DEFAULT_MEMORY_RESOURCE std::pmr::get_default_resource()
 #define CAT(a,b) a##b
 #define CAT_2(a,b) CAT(a,b)
-#define $defer alib5::defer_t CAT_2(defer,__COUNTER__) = [&] noexcept  
+#define $defer alib5::defer_t CAT_2(defer,__COUNTER__) = [&] ALIB5_NOEXCEPT  
 #define MAY_INVOKE(N) if constexpr(conf_lib_error_invoke_level >= (N))
 
 /// 提供对view和其他类型之间的尝试性赋值
@@ -99,15 +108,15 @@ namespace alib5{
             using is_transparent = void;
 
             // 使用 std::hash<std::string_view> 作为基础，因为它能处理各种字符串容器
-            size_t operator()(std::string_view sv) const noexcept {
+            size_t operator()(std::string_view sv) const ALIB5_NOEXCEPT {
                 return std::hash<std::string_view>{}(sv);
             }
             /*
-                size_t operator()(const std::pmr::string& s) const noexcept {
+                size_t operator()(const std::pmr::string& s) const ALIB5_NOEXCEPT {
                     return std::hash<std::string_view>{}(s);
                 }
                 
-                size_t operator()(const std::string& s) const noexcept {
+                size_t operator()(const std::string& s) const ALIB5_NOEXCEPT {
                     return std::hash<std::string_view>{}(s);
             }
             */
@@ -117,7 +126,7 @@ namespace alib5{
             using is_transparent = void;
 
             // 利用 string_view 的 operator==，它已经重载了各种字符串组合
-            bool operator()(std::string_view lhs, std::string_view rhs) const noexcept {
+            bool operator()(std::string_view lhs, std::string_view rhs) const ALIB5_NOEXCEPT {
                 return lhs == rhs;
             }
         };
@@ -129,13 +138,13 @@ namespace alib5{
 
         /// 转换为string(特化路径)
         /// @tparam copy 为true时返回std::string可用于直接构造对象，为false时返回std::string_view可以持有内部buffer的数据
-        template<bool copy = true,IsStringLike T> [[nodiscard]] auto to_string(T && v) noexcept;
+        template<bool copy = true,IsStringLike T> [[nodiscard]] auto to_string(T && v) ALIB5_NOEXCEPT;
         /// 转换为string(General)
         /// @tparam copy 为true时返回std::string可用于直接构造对象，为false时返回std::string_view可以持有内部buffer的数据
-        template<bool copy = true,class T> [[nodiscard]] auto to_string(T && v) noexcept;
+        template<bool copy = true,class T> [[nodiscard]] auto to_string(T && v) ALIB5_NOEXCEPT;
 
         /// 转换为其他类型
-        template<class T> auto to_T(std::string_view v,std::from_chars_result * result = nullptr) noexcept;
+        template<class T> auto to_T(std::string_view v,std::from_chars_result * result = nullptr) ALIB5_NOEXCEPT;
     
         template<bool copy = true ,class... Args > 
         auto _to_string(std::string_view fmt,Args&&... args);
@@ -145,7 +154,7 @@ namespace alib5{
     template<class T> struct defer_t{
         T defer_func;
         inline defer_t(T functor):defer_func(std::move(functor)){}
-        inline ~defer_t() noexcept{defer_func();}
+        inline ~defer_t() ALIB5_NOEXCEPT{defer_func();}
 
         defer_t(const defer_t &) = delete;
         defer_t(defer_t &&) = delete;
@@ -195,25 +204,25 @@ namespace alib5{
     using RTErrorTriggerFnpp = std::function<void(const RuntimeError &)>;
 
     /// 发起新的错误
-    void ALIB5_API invoke_error(detail::ErrorCtx ctx,std::string_view data = "",Severity = Severity::Error) noexcept;
+    void ALIB5_API invoke_error(detail::ErrorCtx ctx,std::string_view data = "",Severity = Severity::Error) ALIB5_NOEXCEPT;
     /// 使用fmt发起新的错误
     template<class... Args>
-    void invoke_error(detail::ErrorCtx ctx,std::string_view fmt,Severity,Args&&... args) noexcept;
+    void invoke_error(detail::ErrorCtx ctx,std::string_view fmt,Severity,Args&&... args) ALIB5_NOEXCEPT;
     /// 使用fmt发起新的错误，默认severity为error
     template<class... Args>
-    inline void invoke_error(detail::ErrorCtx ctx,std::string_view fmt,Args&&... args) noexcept;
+    inline void invoke_error(detail::ErrorCtx ctx,std::string_view fmt,Args&&... args) ALIB5_NOEXCEPT;
 
     /// 设置快触发函数
-    void ALIB5_API set_fast_error_callback(RuntimeErrorTriggerFn fn) noexcept;
+    void ALIB5_API set_fast_error_callback(RuntimeErrorTriggerFn fn) ALIB5_NOEXCEPT;
     /// 设置慢触发函数
-    void ALIB5_API add_error_callback(RTErrorTriggerFnpp heavy_fn) noexcept;
+    void ALIB5_API add_error_callback(RTErrorTriggerFnpp heavy_fn) ALIB5_NOEXCEPT;
 
     /// 杂类函数
     namespace misc{
         /// 返回格式化的当前时间
-        std::string_view ALIB5_API get_time() noexcept;
+        std::string_view ALIB5_API get_time() ALIB5_NOEXCEPT;
         /// 格式化时间
-        std::string_view ALIB5_API format_duration(int seconds) noexcept;
+        std::string_view ALIB5_API format_duration(int seconds) ALIB5_NOEXCEPT;
         /// 对耗时进行细致化的处理
         std::pair<double,std::string_view> ALIB5_API normalize_elapse(double elapse_ms);
     
@@ -247,15 +256,15 @@ namespace alib5{
     /// 字符串处理函数
     namespace str{
         /// 更加高级的去除转义语序
-        std::string_view ALIB5_API unescape(std::string_view in) noexcept;
+        std::string_view ALIB5_API unescape(std::string_view in) ALIB5_NOEXCEPT;
         /// 反向处理，对字符串进行转义化
-        std::string_view ALIB5_API escape(std::string_view in,bool ensure_ascii = false) noexcept;
+        std::string_view ALIB5_API escape(std::string_view in,bool ensure_ascii = false) ALIB5_NOEXCEPT;
         /// 去除空白字符，返回的是input的sub string_view
         std::string_view ALIB5_API trim(std::string_view input);
         // 分割字符串，可以识别整个字符串,vector中为对source的切片
-        std::vector<std::string_view> ALIB5_API split(std::string_view source,std::string_view seps) noexcept;
+        std::vector<std::string_view> ALIB5_API split(std::string_view source,std::string_view seps) ALIB5_NOEXCEPT;
         /// 分割字符串,vector中为对source的切片
-        inline std::vector<std::string_view> ALIB5_API split(std::string_view source,const char sep) noexcept{
+        inline std::vector<std::string_view> ALIB5_API split(std::string_view source,const char sep) ALIB5_NOEXCEPT{
             return str::split(source, std::string_view(&sep,1));
         }
         /// 大小写转换
@@ -330,13 +339,13 @@ namespace alib5{
                 scanned = entry.scanned;
                 last_write = entry.last_write;
             }
-            inline FileEntry(FileEntry&& entry) noexcept{
+            inline FileEntry(FileEntry&& entry) ALIB5_NOEXCEPT{
                 operator=(std::forward<FileEntry>(entry));
             }
-            inline FileEntry(const FileEntry& entry) noexcept {
+            inline FileEntry(const FileEntry& entry) ALIB5_NOEXCEPT {
                 *this = entry;
             }
-            inline FileEntry() noexcept{}
+            inline FileEntry() ALIB5_NOEXCEPT{}
 
             /// 是否有效
             inline bool invalid() const{
@@ -426,7 +435,7 @@ namespace alib5{
             }
         };
 
-        FileEntry ALIB5_API load_entry(std::string_view,bool force_existence = true) noexcept;
+        FileEntry ALIB5_API load_entry(std::string_view,bool force_existence = true) ALIB5_NOEXCEPT;
 
         /// 遍历目录的结果
         struct ALIB5_API TraverseData{
@@ -462,9 +471,9 @@ namespace alib5{
 
         private:
             /// 内部构建的东西
-            friend TraverseData ALIB5_API traverse_files(std::string_view,TraverseConfig) noexcept;
+            friend TraverseData ALIB5_API traverse_files(std::string_view,TraverseConfig) ALIB5_NOEXCEPT;
             /// 构建allow数组
-            void build() noexcept;
+            void build() ALIB5_NOEXCEPT;
             /// 对于keep进行简易处理增加性能
             bool allow[10] {false};
         };
@@ -472,21 +481,21 @@ namespace alib5{
 
         /// 遍历文件
         /// @param file_path 支持相对路径和绝对路径
-        TraverseData ALIB5_API traverse_files(std::string_view file_path,TraverseConfig config = TraverseConfig()) noexcept;
+        TraverseData ALIB5_API traverse_files(std::string_view file_path,TraverseConfig config = TraverseConfig()) ALIB5_NOEXCEPT;
     };
 
     namespace sys{
     #ifdef _WIN32
         /// 启用系统的虚拟控制台，这样才能进行彩色转义输出
-        ALIB5_API void enable_virtual_terminal() noexcept;
+        ALIB5_API void enable_virtual_terminal() ALIB5_NOEXCEPT;
     #else
         // 一般都支持，所以留空
         /// 启用系统虚拟控制台（基本上都是支持的）
-        inline void enable_virtual_terminal() noexcept{}
+        inline void enable_virtual_terminal() ALIB5_NOEXCEPT{}
     #endif
         
         /// 获取系统的CPU的品牌名
-        std::string_view ALIB5_API get_cpu_brand() noexcept;
+        std::string_view ALIB5_API get_cpu_brand() ALIB5_NOEXCEPT;
 
         /// 内存占用结构体,单位byte
         struct ALIB5_API ProgramMemUsage{
@@ -508,10 +517,10 @@ namespace alib5{
 
 
         /// 获取程序内存占用
-        ProgramMemUsage ALIB5_API get_prog_mem_usage() noexcept;
+        ProgramMemUsage ALIB5_API get_prog_mem_usage() ALIB5_NOEXCEPT;
 
         /// 获取系统内存占用
-        GlobalMemUsage ALIB5_API get_global_mem_usage() noexcept;
+        GlobalMemUsage ALIB5_API get_global_mem_usage() ALIB5_NOEXCEPT;
     }
 };
 
@@ -569,7 +578,7 @@ namespace alib5{
     }
 
     template<class... Args>
-    inline void invoke_error(detail::ErrorCtx ctx,std::string_view fmt,Severity sv,Args&&... args) noexcept{
+    inline void invoke_error(detail::ErrorCtx ctx,std::string_view fmt,Severity sv,Args&&... args) ALIB5_NOEXCEPT{
         try{
             std::pmr::string data(ALIB5_DEFAULT_MEMORY_RESOURCE);
             data.reserve(conf_error_string_reserve_size);
@@ -581,12 +590,12 @@ namespace alib5{
     }
 
     template<class... Args>
-    inline void invoke_error(detail::ErrorCtx ctx,std::string_view fmt,Args&&... args) noexcept{
+    inline void invoke_error(detail::ErrorCtx ctx,std::string_view fmt,Args&&... args) ALIB5_NOEXCEPT{
         invoke_error(ctx,fmt,Severity::Error,std::forward<Args>(args)...);
     }
 
     namespace ext{
-        template<bool copy,IsStringLike T> [[nodiscard]] auto to_string(T && v) noexcept{
+        template<bool copy,IsStringLike T> [[nodiscard]] auto to_string(T && v) ALIB5_NOEXCEPT{
             if constexpr(std::is_pointer_v<decltype(v)>){
                 [[unlikely]] if(!v)return "";
             }
@@ -617,7 +626,7 @@ namespace alib5{
             }else return std::string_view(fmt_buf);
         }
 
-        template<bool copy,class T> [[nodiscard]] auto to_string(T && v) noexcept{
+        template<bool copy,class T> [[nodiscard]] auto to_string(T && v) ALIB5_NOEXCEPT{
             // std::string能处理的给std::string,实际上效率会更高
             using PureT  = std::decay_t<T>;
             if constexpr(std::is_arithmetic_v<PureT> ||
@@ -660,7 +669,7 @@ namespace alib5{
         }
     }
 
-    template<class T> inline auto ext::to_T(std::string_view v,std::from_chars_result * iresult) noexcept{
+    template<class T> inline auto ext::to_T(std::string_view v,std::from_chars_result * iresult) ALIB5_NOEXCEPT{
         auto report = [](std::error_code ec){
             if(ec){
                 invoke_error(err_format_error,ec.message());

@@ -28,7 +28,7 @@ std::pmr::vector<panalyser_t> pparset_t::analyse_pipe(){
 }
 
 /// 这里是为了方便直接生成sub analyser而不一定需要commit
-pparset_t::Analyser pcursor_t::sub() noexcept{
+pparset_t::Analyser pcursor_t::sub() ALIB5_NOEXCEPT{
     panic_debug(!matched, "Cursor context is invalid!");
     if(applied)return Analyser(
         m_analyser.parser,
@@ -41,7 +41,7 @@ pparset_t::Analyser pcursor_t::sub() noexcept{
     };
 }
 
-pparset_t::Analyser pcursor_t::invalid() noexcept{
+pparset_t::Analyser pcursor_t::invalid() ALIB5_NOEXCEPT{
     return Analyser{
       m_analyser.parser,
       {}  
@@ -49,7 +49,7 @@ pparset_t::Analyser pcursor_t::invalid() noexcept{
 }
 
 
-Parser::Analyser Parser::Analyser::Cursor::commit() noexcept{
+Parser::Analyser Parser::Analyser::Cursor::commit() ALIB5_NOEXCEPT{
     panic_debug(!matched, "Cursor context is invalid!");
     if(applied)return Analyser(
         m_analyser.parser,
@@ -74,7 +74,7 @@ Parser::Analyser Parser::Analyser::Cursor::commit() noexcept{
     );
 }
 
-Parser::Analyser::Value Parser::Analyser::Cursor::peek() const noexcept{
+Parser::Analyser::Value Parser::Analyser::Cursor::peek() const ALIB5_NOEXCEPT{
     panic_debug(!matched, "Cursor context is invalid!");
     size_t cursor = this->cursor;
     if(!processed && prefix != ""){
@@ -100,7 +100,7 @@ Parser::Analyser::Value Parser::Analyser::Cursor::peek() const noexcept{
     return data[cursor++];
 }
 
-Parser::Analyser::Value Parser::Analyser::Cursor::next() noexcept{
+Parser::Analyser::Value Parser::Analyser::Cursor::next() ALIB5_NOEXCEPT{
     panic_debug(!matched, "Cursor context is invalid!");
     if(!processed && prefix != ""){
         processed = true;
@@ -126,7 +126,7 @@ Parser::Analyser::Value Parser::Analyser::Cursor::next() noexcept{
     return data[cursor++];
 }
 
-std::pair<pvalue_t, pvalue_t> pcursor_t::peek_value_bundle(std::string_view opt) noexcept {
+std::pair<pvalue_t, pvalue_t> pcursor_t::peek_value_bundle(std::string_view opt) ALIB5_NOEXCEPT {
     auto backup_cursor = this->cursor;
     auto backup_processed = this->processed;
     
@@ -137,7 +137,7 @@ std::pair<pvalue_t, pvalue_t> pcursor_t::peek_value_bundle(std::string_view opt)
     return result;
 }
 
-std::pair<pvalue_t,pvalue_t> pcursor_t::next_value_bundle(std::string_view opt) noexcept{
+std::pair<pvalue_t,pvalue_t> pcursor_t::next_value_bundle(std::string_view opt) ALIB5_NOEXCEPT{
     panic_debug(!matched, "Cursor context is invalid!");
     if(prefix != "" && !processed){
         return {prefix,next()};
@@ -169,7 +169,7 @@ std::pair<pvalue_t,pvalue_t> pcursor_t::next_value_bundle(std::string_view opt) 
     return {k,v};
 }
 
-Parser::Analyser::Cursor Parser::Analyser::with_prefix(std::string_view data,std::string_view opt,size_t beg) noexcept{
+Parser::Analyser::Cursor Parser::Analyser::with_prefix(std::string_view data,std::string_view opt,size_t beg) ALIB5_NOEXCEPT{
     for(size_t i = beg;i < inputs.size();++i){
         if(inputs[i].starts_with(data)){
             auto c = Cursor{
@@ -190,7 +190,7 @@ Parser::Analyser::Cursor Parser::Analyser::with_prefix(std::string_view data,std
     };
 }
 
-Parser::Analyser::Cursor Parser::Analyser::with_opt(std::string_view opt,size_t beg) noexcept{
+Parser::Analyser::Cursor Parser::Analyser::with_opt(std::string_view opt,size_t beg) ALIB5_NOEXCEPT{
     // 忽略掉header
     for(size_t i = beg;i < inputs.size();++i){
         if(inputs[i] == opt)return Cursor{
@@ -208,7 +208,7 @@ Parser::Analyser::Cursor Parser::Analyser::with_opt(std::string_view opt,size_t 
     };
 }
 
-void Parser::from_args(int argc,const char * argv[]) noexcept{
+void Parser::from_args(int argc,const char * argv[]) ALIB5_NOEXCEPT{
     head.clear();
     arg_full.clear();
     args.clear();

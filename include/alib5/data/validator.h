@@ -36,9 +36,9 @@ namespace alib5{
                 :method(other.method),args(other.args, __a){}
 
                 Validate(const Validate&) = default;
-                Validate(Validate&&) noexcept = default;
+                Validate(Validate&&) ALIB5_NOEXCEPT = default;
                 Validate& operator=(const Validate&) = default;
-                Validate& operator=(Validate&&) noexcept = default;
+                Validate& operator=(Validate&&) ALIB5_NOEXCEPT = default;
             };
             std::pmr::vector<Validate> validates;
             /// 对于类型,默认值就是默认值
@@ -79,7 +79,7 @@ namespace alib5{
             Node(const Node& __other)
             :Node(__other, __other.validates.get_allocator().resource()){}
             
-            Node(Node&& __other) noexcept
+            Node(Node&& __other) ALIB5_NOEXCEPT
             :required(__other.required)
             ,type_restrict(__other.type_restrict)
             ,min_length(std::move(__other.min_length))
@@ -91,7 +91,7 @@ namespace alib5{
             ,is_tuple(__other.is_tuple)
             ,override_if_conflict(__other.override_if_conflict){}
 
-            Node& operator=(Node&&) noexcept = default;
+            Node& operator=(Node&&) ALIB5_NOEXCEPT = default;
 
             void reset(){
                 required = true;
