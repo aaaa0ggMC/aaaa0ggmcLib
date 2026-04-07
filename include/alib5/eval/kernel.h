@@ -258,10 +258,61 @@ namespace alib5::eval{
         using TOperation = Operation<ValueType>;
         TContext & ctx;
         std::pmr::vector<TOperation> operations;
+        uint64_t children_output_index { 0 };
+
+        uint64_t next_output_index(){
+            return ++children_output_index;
+        }
+
+        void add(
+            typename Operation<ValueType>::OpTarget a,
+            size_t id,
+            bool add_after = true
+        ){
+            Operation<ValueType> op(ctx.get_allocator());
+            op.output_index = 0;
+            if(add_after){
+                op.targets.emplace_back(
+                    typename Operation<ValueType>::Cacheline{ 0 }
+                );
+                op.targets.emplace_back(std::move(a));
+            }else{
+                op.targets.emplace_back(std::move(a));
+                op.targets.emplace_back(
+                    typename Operation<ValueType>::Cacheline{ 0 }
+                );
+            }
+            op.op.id = id;
+
+            operations.emplace_back(
+                std::move(op)
+            );
+        }
 
         Expression(TContext & ctx)
         :ctx(ctx){}
     };
+
+    /// 一些生成expression的辅助函数
+    template<class ValueType = double >
+    Expression<ValueType> GenExpression(
+        Context<ValueType> & ctx,
+        typename Operation<ValueType>::OpTarget a,
+        typename Operation<ValueType>::OpTarget b,
+        size_t id
+    ){
+        Expression<ValueType> exp(ctx);
+        Operation<ValueType> op(ctx.get_allocator());
+        op.output_index = 0;
+        op.targets.emplace_back(std::move(a));
+        op.targets.emplace_back(std::move(b));
+        op.op.id = id;
+
+        exp.operations.emplace_back(
+            std::move(op)
+        );
+        return exp;
+    }
 
     template<IsValueType ValueType = double >
     struct ALIB5_API Executor{
@@ -330,11 +381,7 @@ namespace alib5::eval{
                         }
                     },t.data);
                 }
-
-                // 默认都是回写到 0 号位置,我觉得先置空cache 0 ?
-                cache[op.output_index] = ValueType();
                 (it->second).func(cache.input,cache[op.output_index]);
-
                 latest = op.output_index;
             }
 
