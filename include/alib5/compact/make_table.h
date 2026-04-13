@@ -84,6 +84,16 @@ namespace alib5{
         std::vector<BenchmarkResults> results = {result};
         return make_table(results,std::forward<Fn>(fn));
     }
+    
+    template<size_t Times = 1000,size_t Turns = 100,class Fn1,class Fn2,class Fn = std::nullptr_t>
+    inline auto make_table_compare_bench(std::string_view n1,Fn1 && fn1,std::string_view n2,Fn2 && fn2,size_t precision = 6,Fn && fn = nullptr){
+        return make_table_compare<Fn>(
+            Benchmark(std::forward<Fn1>(fn1)).run(Times, Turns).name(n1),
+            Benchmark(std::forward<Fn1>(fn1)).run(Times, Turns).name(n2),
+            precision,
+            std::forward<Fn>(fn)
+        );
+    }
 
     template<class Fn = std::nullptr_t>
     inline auto make_table_compare(const BenchmarkResults& a,const BenchmarkResults & b,size_t precision = 6,Fn&& fn = nullptr){

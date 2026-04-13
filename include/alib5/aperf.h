@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 一个简单的性能计算库，能确保数据大致准确，同时省的我每次都要写差不多的benchmark代码
  * @version 5.0
- * @date 2026/04/07
+ * @date 2026/04/13
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -145,8 +145,8 @@ namespace alib5{
             return ss.str();
         }
 
-        BenchmarkResults& name(std::string name){
-            m_name = std::move(name);
+        BenchmarkResults& name(std::string_view name){
+            m_name = name; // 这里是和意味?
             return *this;
         }
 
