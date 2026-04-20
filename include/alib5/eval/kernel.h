@@ -322,9 +322,13 @@ namespace alib5::eval{
                         using T = std::decay_t<decltype(val)>;
                         if constexpr(std::is_same_v<T,Symbol<ValueType>>){
                             // do nothing
-                        }else if(std::is_same_v<T,OCacheline>){
+                        }else if constexpr(std::is_same_v<T,OCacheline>){
                             val.index += begin_index;
                             if(val.index > max_index)max_index = val.index;
+                        }else if constexpr(std::is_same_v<T,ValueType>){
+                            // do nothing
+                        }else {
+                            static_assert(std::is_same_v<T,Symbol<ValueType>>,"Implement this!");
                         }
                     },target.data);
                 }
@@ -385,6 +389,38 @@ namespace alib5::eval{
 
         Expression(TContext & ctx)
         :ctx(ctx){}
+
+        // 输出指令集合
+        template<class TStreamedContext>
+        TStreamedContext&& self_forward(TStreamedContext && ctx){
+            for(const TOperation & op : operations){
+                std::move(ctx) 
+                << this->ctx.get_op_data(op.op.id).name
+                << " ";
+                for(size_t i = 0;i < op.targets.size();++i){
+                    std::visit([&](auto & val){
+                        using T = std::decay_t<decltype(val)>;
+                        if constexpr(std::is_same_v<T,Symbol<ValueType>>){
+                            const Symbol<ValueType> & s = val;
+                            std::move(ctx) << "\"" 
+                            << s.get_name()
+                            << "\"";
+                        }else if constexpr(std::is_same_v<T,OCacheline>){
+                            const OCacheline & s = val;
+                            std::move(ctx) << "c" << s.index;
+                        }else if constexpr (std::is_same_v<T,ValueType>){
+                            std::move(ctx) << val;
+                        }else {
+                            static_assert(std::is_same_v<T,Symbol<ValueType>>,"Implement this!");
+                        }
+                    },op.targets[i].data);
+                    if(i + 1 != op.targets.size())std::move(ctx) << ",";
+                }
+
+                std::move(ctx) << " -> " << "c" << op.output_index << "\n"; 
+            }
+            return std::move(ctx);
+        } 
     };
 
     /// 一些生成expression的辅助函数
@@ -576,6 +612,8 @@ namespace alib5::eval{
                             cache.input.emplace_back(
                                 val
                             );
+                        }else {
+                            static_assert(std::is_same_v<T,Symbol<ValueType>>,"Implement this!");
                         }
                     },t.data);
                 }

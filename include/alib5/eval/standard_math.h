@@ -69,26 +69,15 @@ namespace alib5::eval::math{
     /// 这个是expression和symbol直接接入数值到expression后面
     #define GEN_OP(S,ROP,OP,ID) \
     template<class ValueType>\
-    Expression<ValueType>& operator OP (Expression<ValueType> & a,const Symbol<ValueType> & b){\
+    Expression<ValueType> operator OP (Expression<ValueType> a,const Symbol<ValueType> & b){\
         [[unlikely]] panic_if(&(a.ctx) != b.ctx,"Context not match!");\
         a.add({ b },ID);\
         return a;\
     }\
     template<class ValueType, std::convertible_to<ValueType> InValueType>\
-    Expression<ValueType>& operator OP (Expression<ValueType> & a,const InValueType & b){\
+    Expression<ValueType> operator OP (Expression<ValueType> a,const InValueType & b){\
         a.add({ (ValueType)b },ID);\
         return a;\
-    }\
-    template<class ValueType>\
-    Expression<ValueType>&& operator OP (Expression<ValueType> && a,const Symbol<ValueType> & b){\
-        [[unlikely]] panic_if(&(a.ctx) != b.ctx,"Context not match!");\
-        a.add({ b },ID);\
-        return std::move(a);\
-    }\
-    template<class ValueType, std::convertible_to<ValueType> InValueType>\
-    Expression<ValueType>&& operator OP (Expression<ValueType> && a,const InValueType & b){\
-        a.add({ (ValueType)b },ID);\
-        return std::move(a);\
     }
 
     X_OPS;
@@ -98,26 +87,15 @@ namespace alib5::eval::math{
     /// 反过来也是直接操作?
     #define GEN_OP(S,ROP,OP,ID) \
     template<class ValueType>\
-    Expression<ValueType>& operator OP (const Symbol<ValueType> & b,Expression<ValueType> & a){\
+    Expression<ValueType> operator OP (const Symbol<ValueType> & b,Expression<ValueType> a){\
         [[unlikely]] panic_if(&(a.ctx) != b.ctx,"Context not match!");\
         a.add({ b },ID,false);\
         return a;\
     }\
-    template<class ValueType>\
-    Expression<ValueType>&& operator OP (const Symbol<ValueType> & b,Expression<ValueType> && a){\
-        [[unlikely]] panic_if(&(a.ctx) != b.ctx,"Context not match!");\
-        a.add({ b },ID,false);\
-        return std::move(a);\
-    }\
     template<class ValueType, std::convertible_to<ValueType> InValueType>\
-    Expression<ValueType>& operator OP (const InValueType & b,Expression<ValueType> & a){\
+    Expression<ValueType> operator OP (const InValueType & b,Expression<ValueType> a){\
         a.add({ (ValueType)b },ID,false);\
         return a;\
-    }\
-    template<class ValueType, std::convertible_to<ValueType> InValueType>\
-    Expression<ValueType>&& operator OP (const InValueType & b,Expression<ValueType> && a){\
-        a.add({ (ValueType)b },ID,false);\
-        return std::move(a);\
     }
 
     X_OPS;
@@ -127,28 +105,16 @@ namespace alib5::eval::math{
     /// 接下来便是比较复杂的Expression之间的合并了,因为两个实际上用到的是同一个cacheline,因此似乎无法避免递归修改另一个对象的cacheline?
     #define GEN_OP(S,ROP,OP,ID)\
     template<class ValueType>\
-    Expression<ValueType>& operator OP (Expression<ValueType> & lhs,Expression<ValueType> & rhs){\
+    Expression<ValueType> operator OP (Expression<ValueType> lhs,Expression<ValueType> rhs){\
         [[unlikely]] panic_if(&(lhs.ctx) != &(rhs.ctx),"Context not match!");\
         lhs.merge(rhs,ID);\
         return lhs;\
     }\
     template<class ValueType>\
-    Expression<ValueType>&& operator OP (Expression<ValueType> && lhs,Expression<ValueType> & rhs){\
-        [[unlikely]] panic_if(&(lhs.ctx) != &(rhs.ctx),"Context not match!");\
-        lhs.merge(rhs,ID);\
-        return std::move(lhs);\
-    }\
-    template<class ValueType>\
-    Expression<ValueType>& operator OP (Expression<ValueType> & lhs,Expression<ValueType> && rhs){\
+    Expression<ValueType> operator OP (Expression<ValueType> lhs,Expression<ValueType> && rhs){\
         [[unlikely]] panic_if(&(lhs.ctx) != &(rhs.ctx),"Context not match!");\
         lhs.merge(rhs,ID);\
         return lhs;\
-    }\
-    template<class ValueType>\
-    Expression<ValueType>&& operator OP (Expression<ValueType> && lhs,Expression<ValueType> && rhs){\
-        [[unlikely]] panic_if(&(lhs.ctx) != &(rhs.ctx),"Context not match!");\
-        lhs.merge(rhs,ID);\
-        return std::move(lhs);\
     }
 
     X_OPS;
