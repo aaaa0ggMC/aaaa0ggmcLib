@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 流式输出处控制，主持write_to_log(类函数&全局函数)编译期注入
  * @version 0.1
- * @date 2026/03/19
+ * @date 2026/05/07
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -158,7 +158,7 @@ namespace alib5{
                 if(val.need_fmt){
                     std::format_to(
                         std::back_inserter(cache_str),
-                        std::runtime_format(val.omit_str),
+                        std::dynamic_format(val.omit_str),
                         clen2 - clen - val.max_length
                     );
                 }else cache_str.append(val.omit_str);

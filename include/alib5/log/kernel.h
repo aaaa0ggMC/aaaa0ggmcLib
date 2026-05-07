@@ -2,7 +2,7 @@
 * @brief 与日志有关的函数库
 * @author aaaa0ggmc
 * @last-date 2025/04/04
-* @date 2026/03/26 
+* @date 2026/05/07 
 * @version 5.0
 * @copyright Copyright(C)2025
 ********************************
@@ -63,7 +63,7 @@
 
 namespace alib5{
     /// @brief 最多可以有多少信号，默认最大值就行
-    constexpr unsigned int semaphore_max_val = std::__semaphore_impl::_S_max;
+    constexpr long int semaphore_max_val = (long int)std::__semaphore_impl::_S_max;
     /// @brief Consumer构建的时候预留多少msg槽位（运行时可对齐到fetch_max_size的）
     constexpr unsigned int consumer_message_default_count = 128;
     /// @brief 日期字符串预留的空间，一般格式化没问题的

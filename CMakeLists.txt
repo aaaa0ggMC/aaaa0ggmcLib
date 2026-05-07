@@ -19,6 +19,8 @@ set(CMAKE_EXE_LINKER_FLAGS
 )
 # 由于我会使用cmake install然后测试lib，因此也就不需要指定build目录了
 include_directories(./include)
+# 测试新的C++反射特性
+add_compile_options(-freflection)
 
 aux_source_directory("./src" SRC)
 aux_source_directory("./src/data" DATA)

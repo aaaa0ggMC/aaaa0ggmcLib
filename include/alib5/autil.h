@@ -1,12 +1,13 @@
 /**@file autil.h
 * @brief 工具库，提供实用函数
 * @author aaaa0ggmc
-* @date 2026/04/07
+* @date 2026/05/07
 * @version 5.0
 * @copyright Copyright(c) 2026
 */
 #ifndef ALIB5_AUTIL
 #define ALIB5_AUTIL
+#include <format>
 #include <alib5/detail/abase.h>
 #include <alib5/detail/aerr_id.h>
 #include <cctype>
@@ -610,13 +611,13 @@ namespace alib5{
         auto _to_string(std::string_view fmt,Args&&... args){
             fmt_buf.clear();
             try{
-                std::format_to(
+                std::vformat_to(
                     std::back_inserter(fmt_buf),
-                    std::runtime_format(fmt),
-                    args...
+                    fmt,
+                    std::make_format_args(args...)
                 );
             }catch(...){
-                fmt_buf = "[FOMRAT_ERROR]";
+                fmt_buf = "[FORMAT_ERROR]";
                 MAY_INVOKE(3){
                     invoke_error(err_format_error,"Failed to format the target!");
                 }

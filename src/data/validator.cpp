@@ -402,7 +402,7 @@ std::pmr::string Validator::from_adata(const AData & doc){
                 auto v = cursor.next();
                 if(!v){
                     std::format_to(std::back_inserter(errors),
-                        std::runtime_format("Empty method when parsing VALIDATE VISIT_TREE:{}\n"),
+                        "Empty method when parsing VALIDATE VISIT_TREE:{}\n",
                         visit_tree
                     );
                     return false;
@@ -421,7 +421,7 @@ std::pmr::string Validator::from_adata(const AData & doc){
                     }
                     if(v.view() != rb){
                         std::format_to(std::back_inserter(errors),
-                            std::runtime_format("Unclosed args when parsing VALIDATE VISIT_TREE:{}\n"),
+                            "Unclosed args when parsing VALIDATE VISIT_TREE:{}\n",
                             visit_tree
                         );
                         return false;
@@ -435,7 +435,7 @@ std::pmr::string Validator::from_adata(const AData & doc){
                 auto c = cursor.next();
                 if(c.view() == ""){
                     std::format_to(std::back_inserter(errors),
-                        std::runtime_format("Empty value when parsing MIN VISIT_TREE:{}\n"),
+                        "Empty value when parsing MIN VISIT_TREE:{}\n",
                         visit_tree
                     );
                     return false;
@@ -536,7 +536,7 @@ std::pmr::string Validator::from_adata(const AData & doc){
                             if(simp_validate_type(val[2 - vi_offset],*current).first)current->default_value = val[2 - vi_offset];
                             else{
                                 std::format_to(std::back_inserter(errors),
-                                    std::runtime_format("Default value doesnt match the restriction \"{}\" VISIT_TREE {}"),
+                                    "Default value doesnt match the restriction \"{}\" VISIT_TREE {}",
                                     node_type_str(current->type_restrict),
                                     visit_tree
                                 );

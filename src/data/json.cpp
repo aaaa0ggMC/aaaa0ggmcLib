@@ -213,7 +213,14 @@ JSON::DumpResult JSON::__internal_dump(__dump_fn fn,void * p, const dadata_t & r
                         if(double_cache.capacity() < 16)double_cache.reserve(16);
                         double_cache.clear();
 
-                        std::format_to(std::back_inserter(double_cache),std::runtime_format("{:.{}f}"),val,cfg.float_precision);
+                        std::vformat_to(
+                            std::back_inserter(double_cache),
+                            "{:.{}f}",
+                            std::make_format_args(
+                                val,
+                                cfg.float_precision
+                            )
+                        );
                         fn(double_cache,p);
                     }
                 }

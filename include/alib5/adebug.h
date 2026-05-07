@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 目标是提供简单可用的错误判断，适合我这种一般不调试的人
  * @version 5.0
- * @date 2026/04/07
+ * @date 2026/05/07
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -11,7 +11,11 @@
  */
 #ifndef ALIB5_ADEBUG
 #define ALIB5_ADEBUG
+
+#ifndef ALIB5_NO_STACKTRACE
 #include <stacktrace>
+#endif
+
 #include <source_location>
 #include <assert.h>
 #include <format>
@@ -67,6 +71,7 @@ constexpr const char * alib_g3_internal_vpanic_if_fmt = "\nCondition: {}";
 
 namespace alib5{
     namespace detail{
+        #ifndef ALIB5_NO_STACKTRACE
         inline std::string simplify_stacktrace(const decltype(std::stacktrace::current()) & st) {
             constexpr int skipc = 2;
             int index = -1;
@@ -95,17 +100,22 @@ namespace alib5{
             }
             return ret;
         }
+        #endif
 
         inline void internal_panic(std::string_view msg,std::source_location sl){
+            #ifndef ALIB5_NO_STACKTRACE
+            std::string trace = ADEBUG_INTERNAL_PANIC_STACKTRACE_FN(std::stacktrace::current());
+            #else
+            std::string_view trace = "<DISABLED>";
+            #endif
             std::string final_str = std::format(alib_g3_internal_panic_fmt,msg,sl.file_name(),sl.function_name(),
-                sl.line(),sl.column(),ADEBUG_INTERNAL_PANIC_STACKTRACE_FN(std::stacktrace::current()));
+                sl.line(),sl.column(),trace);
         #ifndef ADEBUG_NO_OUTPUT
             std::cerr << final_str << std::endl;
         #endif
             ADEBUG_INTERNAL_PANIC_FORWARD(final_str);
             ADEBUG_INTERNAL_PANIC_ABORT;
         }
-
     };
 
 
