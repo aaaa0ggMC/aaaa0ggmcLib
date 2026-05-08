@@ -4,7 +4,7 @@
  * @brief 各种排序算法，在reverse=false的情况下，若使用defcompare，即arg1 < arg2,保证升序 \ 
  * 每个算法是怎么测试的可以看docs/aalgorithm.md查看情况
  * @version 5.0
- * @date 2026/03/26
+ * @date 2026/05/08
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -49,11 +49,115 @@ namespace alib5::algo::sort{
         requires(){
             std::is_same_v<std::decay_t<Fn>,std::nullptr_t>;
         };
-    template<class T> concept IsIterator = 
+
+    template<class IterType,class Fn> 
+    struct InjectPosIterator{
+        using iterator_category = typename std::iterator_traits<IterType>::iterator_category;
+        using value_type        = typename std::iterator_traits<IterType>::value_type;
+        using difference_type   = typename std::iterator_traits<IterType>::difference_type;
+        using pointer           = typename std::iterator_traits<IterType>::pointer;
+        using reference         = typename std::iterator_traits<IterType>::reference;
+
+        IterType it;
+        size_t data { 0 };
+
+        template<class R>
+        InjectPosIterator(IterType it,R &&)
+        :it(it){}
+
+        void operator++() requires requires(IterType it){ ++it; } { 
+            ++it;
+            ++data; 
+        }
+
+        void operator--() requires requires(IterType it){ --it; } { 
+            --it;
+            --data; 
+        }
+
+        InjectPosIterator operator++(int) requires requires(IterType it){ ++it; } {
+            auto tmp = *this;
+            ++(*this);
+            return tmp;
+        }
+
+        InjectPosIterator operator--(int) requires requires(IterType it){ --it; } {
+            auto tmp = *this;
+            --(*this);
+            return tmp;
+        }
+        
+        size_t get_index() const { 
+            return data; 
+        } 
+        decltype(auto) operator*() const { return *it; }
+        bool operator!=(const InjectPosIterator& other) const { return it != other.it; }
+        bool operator==(const InjectPosIterator& other) const { return it == other.it; }
+    };
+
+    template<class IterType>
+    struct InjectPosIterator<IterType,std::nullptr_t>{
+        using iterator_category = typename std::iterator_traits<IterType>::iterator_category;
+        using value_type        = typename std::iterator_traits<IterType>::value_type;
+        using difference_type   = typename std::iterator_traits<IterType>::difference_type;
+        using pointer           = typename std::iterator_traits<IterType>::pointer;
+        using reference         = typename std::iterator_traits<IterType>::reference;
+
+        IterType it;
+
+        InjectPosIterator(IterType it,std::nullptr_t)
+        :it(it){}
+
+        void operator++() requires requires(IterType it){ ++it; } { 
+            ++it;
+        }
+
+        void operator--() requires requires(IterType it){ --it; } { 
+            --it;
+        }
+
+        InjectPosIterator operator++(int) requires requires(IterType it){ ++it; } {
+            auto tmp = *this;
+            ++(*this);
+            return tmp;
+        }
+
+        InjectPosIterator operator--(int) requires requires(IterType it){ --it; } {
+            auto tmp = *this;
+            --(*this);
+            return tmp;
+        }
+
+        size_t get_index() const { return 0; }     
+        decltype(auto) operator*() const { return *it; }   
+        
+        bool operator!=(const InjectPosIterator& other) const { return it != other.it; }
+        bool operator==(const InjectPosIterator& other) const { return it == other.it; }
+    };
+
+    // 推导指导，让nullptr就是nullptr_t
+    template<class IterType,class R>
+    InjectPosIterator(IterType,R &&) -> InjectPosIterator<IterType,std::decay_t<R>>;
+    
+    template<class T> concept IsRandomAccessIterator = 
         std::random_access_iterator<T> ||
         std::is_pointer_v<T>;
 
-    /// @brief 基础的插入排序，时间复杂度O(n^2)   Tier: D
+    template<class T> concept IsForwardIterator = 
+        std::forward_iterator<T>;
+    
+    template<class T> concept IsBiDirectionalIterator = 
+        std::bidirectional_iterator<T>;
+
+    /// 支持随机访问和forward访问
+    template<class T> concept IsGenericIterator = 
+        IsBiDirectionalIterator<T> ||
+        IsForwardIterator<T>       ||
+        IsRandomAccessIterator<T>  ;
+    
+    ////// RANDOM ACCESS ITERATOR ONLY //////
+
+    /// @brief [R]基础的插入排序，时间复杂度O(n^2)   Tier: D
     /// @param begin   开始
     /// @param end     结束
     /// @param compare 比较函数 
@@ -70,7 +174,7 @@ namespace alib5::algo::sort{
     /// 2 3 1 因为 3 > 1 因此插入1的位置往前,有 2 1 3
     /// 2 1 3 因为 2 > 1 因此插入1位置往前,有1 2 3
     /// @endcode 
-    template<IsIterator IterType,
+    template<IsRandomAccessIterator IterType,
             IsCompareFn<typename std::iterator_traits<IterType>::value_type> CompareFn,
             IsInjectFn InjectFn = std::nullptr_t
             > 
@@ -105,10 +209,10 @@ namespace alib5::algo::sort{
         Hibbard
     };
 
-    /// @brief 简单的希尔排序 时间复杂度O(n^1.3) - O(n^2) Tier:D 
+    /// @brief [R]简单的希尔排序 时间复杂度O(n^1.3) - O(n^2) Tier:D 
     /// 就是带上gap的插入排序
     template<ShellGapType GapType = ShellGapType::Div2,
-            IsIterator IterType,
+            IsRandomAccessIterator IterType,
             IsCompareFn<typename std::iterator_traits<IterType>::value_type> CompareFn,
             IsInjectFn InjectFn = std::nullptr_t
             > 
@@ -166,128 +270,9 @@ namespace alib5::algo::sort{
         }
     }
 
-    /// @brief 简单的选择排序 O(n^2) Tier:E
-    /// @code
-    /// a b c d e f g
-    /// 从a开始往后走,每次把后面最小的放前面,然后就没了
-    /// @endcode 
-    template<IsIterator IterType,
-        IsCompareFn<typename std::iterator_traits<IterType>::value_type> CompareFn,
-        IsInjectFn InjectFn = std::nullptr_t
-        > 
-    void selection(
-        IterType begin,
-        IterType end,
-        CompareFn&& i_compare,
-        bool reverse = false,
-        InjectFn && i_inject = nullptr
-    ){
-        using value_t = std::iterator_traits<IterType>::value_type;
-        auto compare = wrap_compare(std::forward<CompareFn>(i_compare));
-        auto inject = wrap_inject(std::forward<InjectFn>(i_inject));
-        if(begin == end)return;
-
-        for(IterType current = begin;current != end;++current){
-            IterType front = current;
-            for(IterType inner = current + 1;inner != end;++inner){
-                if(compare(*inner,*front,reverse)){
-                    front = inner;
-                }
-            }
-            if(front != current){
-                std::swap(*front,*current);
-                inject(std::distance(begin,front),std::distance(begin,current));
-            }
-        }
-    }
-    
-    /// @brief 基础的冒泡排序，时间复杂度O(n^2) Tier:E
-    /// @param begin   开始
-    /// @param end     结束
-    /// @param compare 比较函数 
-    /// @param reverse 是否反转排序方向
-    /// @param inject  每次进行一次数据交换后进行的操作    /// @par 算法规律记录
-    /// @code
-    /// a b c d e f g
-    /// 从0号位开始如果 a > 下一个就交换持续,执行(n-(index+1))(index从0开始)次,执行(n-1)轮次
-    /// 其他的类似
-    /// 可引入优化 swapped,如果swapped为false就可以提前跑了
-    /// 比如
-    /// 3 2 1 排序
-    /// 3 > 2 交换 2 3 1
-    /// 3 > 1 交换 2 1 3
-    /// 2 > 1 交换 1 2 3
-    /// 此时执行了(n-2)次了,因此不要进行交换了
-    /// 已经执行(n-1)轮.离开
-    /// @endcode 
-    template<IsIterator IterType,
-            IsCompareFn<typename std::iterator_traits<IterType>::value_type>  CompareFn,
-            IsInjectFn InjectFn = std::nullptr_t
-        > 
-    void bubble(
-        IterType begin,
-        IterType end,
-        CompareFn&& i_compare,
-        bool reverse = false,
-        InjectFn && i_inject = nullptr
-    ){
-        auto compare = wrap_compare(std::forward<CompareFn>(i_compare));
-        auto inject = wrap_inject(std::forward<InjectFn>(i_inject));
-        if(begin == end)return;
-        bool swapped = true;
-    
-        for(IterType current = begin;current < (end - 1) && swapped;++current){
-            swapped = false;
-            for(IterType i_current = begin;i_current < (end - 1 - (current - begin));++i_current){
-                if(compare(*(i_current+1),*i_current,reverse)){
-                    std::swap(*i_current,*(i_current+1));
-                    inject(std::distance(begin,i_current),std::distance(begin,i_current + 1));
-                    swapped = true;
-                }
-            }
-        }
-    }
-
-    /// @brief 依旧冒泡优化
-    template<IsIterator IterType,
-            IsCompareFn<typename std::iterator_traits<IterType>::value_type>  CompareFn,
-            IsInjectFn InjectFn = std::nullptr_t
-        > 
-    void odd_even(
-        IterType begin,
-        IterType end,
-        CompareFn&& i_compare,
-        bool reverse = false,
-        InjectFn && i_inject = nullptr
-    ){
-        auto compare = wrap_compare(std::forward<CompareFn>(i_compare));
-        auto inject = wrap_inject(std::forward<InjectFn>(i_inject));
-        if(begin == end)return;
-        bool swapped = true;
-    
-        while(swapped){
-            swapped = false;
-            // 偶数对
-            for(IterType i = begin;i < end - 1;i += 2){
-                if(compare(*(i + 1),*i,reverse)){
-                    std::swap(*(i+1),*i);
-                    inject(std::distance(begin,i+1), std::distance(begin,i));
-                    swapped = true;
-                }
-            }
-            for(IterType i = begin + 1;i < end - 1;i += 2){
-                if(compare(*(i + 1),*i,reverse)){
-                    std::swap(*(i+1),*i);
-                    inject(std::distance(begin,i+1), std::distance(begin,i));
-                    swapped = true;
-                }
-            }
-        }
-    }
-
     /// @brief 树精排序
     // a > b 往前走, a < b 交换,往后走
-    template<IsIterator IterType,
+    template<IsRandomAccessIterator IterType,
             IsCompareFn<typename std::iterator_traits<IterType>::value_type>  CompareFn,
             IsInjectFn InjectFn = std::nullptr_t
         > 
@@ -317,7 +302,7 @@ namespace alib5::algo::sort{
     /// 选择了一个固定步长比例 1.247
     template<
         float GapFactor = 1.247f,
-        IsIterator IterType,
+        IsRandomAccessIterator IterType,
         IsCompareFn<typename std::iterator_traits<IterType>::value_type>  CompareFn,
         IsInjectFn InjectFn = std::nullptr_t
     > 
@@ -353,7 +338,7 @@ namespace alib5::algo::sort{
 
     /// @brief 鸡尾酒排序,左边冒泡一次右边冒泡一次
     /// 简单优化:swappable,没有swappable便说明排序完毕了
-    template<IsIterator IterType,
+    template<IsRandomAccessIterator IterType,
         IsCompareFn<typename std::iterator_traits<IterType>::value_type>  CompareFn,
         IsInjectFn InjectFn = std::nullptr_t
     > 
@@ -405,7 +390,7 @@ namespace alib5::algo::sort{
     /// 此时 high 数据的左侧都是比high小的,右侧都是比high大的
     /// @endcode 
     struct PartitionLomuto {
-        template<IsIterator IterType,class CompareFn,class InjectFn,class Node> 
+        template<IsRandomAccessIterator IterType,class CompareFn,class InjectFn,class Node> 
             static void partition(IterType low,IterType high,
                 CompareFn& compare,bool reverse,InjectFn & inject,
                 std::vector<Node> & nodes,IterType begin,IterType end
@@ -445,7 +430,7 @@ namespace alib5::algo::sort{
     /// 这在不知道数据类型的情况下还是比较难绷的,因此这里加入了对pivot的追踪
     /// @endcode 
     struct PartitionHoare {
-        template<IsIterator IterType, class CompareFn, class InjectFn, class Node>
+        template<IsRandomAccessIterator IterType, class CompareFn, class InjectFn, class Node>
         static void partition(IterType low, IterType high,
                             CompareFn& compare, bool reverse, InjectFn& inject,
                             std::vector<Node>& nodes,IterType begin,IterType end
@@ -491,7 +476,7 @@ namespace alib5::algo::sort{
     /// 简单改良的hoare算法,保证了左侧右侧中位数的顺序性,方便分区
     /// @endcode 
     struct PartitionMedianThree {
-        template<IsIterator IterType, class CompareFn, class InjectFn, class Node>
+        template<IsRandomAccessIterator IterType, class CompareFn, class InjectFn, class Node>
         static void partition(IterType low, IterType high,
                             CompareFn& compare, bool reverse, InjectFn& inject,
                             std::vector<Node>& nodes,IterType begin,IterType end
@@ -532,7 +517,7 @@ namespace alib5::algo::sort{
     /// 之后递归直到只有两个元素,此时简单swap就行
     /// 具体的处理见partition的分区方式
     /// @endcode 
-    template<class PartitionMethod = PartitionMedianThree,IsIterator IterType,
+    template<class PartitionMethod = PartitionMedianThree,IsRandomAccessIterator IterType,
             IsCompareFn<typename std::iterator_traits<IterType>::value_type> CompareFn,
             IsInjectFn InjectFn = std::nullptr_t
     > 
@@ -573,6 +558,130 @@ namespace alib5::algo::sort{
         }
     }
 
+
+    //////// GENERIC ITERATOR ALLOWED ///////
+
+    /// [RFD] @brief 简单的选择排序 O(n^2) Tier:E
+    /// @code
+    /// a b c d e f g
+    /// 从a开始往后走,每次把后面最小的放前面,然后就没了
+    /// @endcode 
+    template<IsGenericIterator IterType,
+        IsCompareFn<typename std::iterator_traits<IterType>::value_type> CompareFn,
+        IsInjectFn InjectFn = std::nullptr_t
+        > 
+    void selection(
+        IterType begin,
+        IterType end,
+        CompareFn&& i_compare,
+        bool reverse = false,
+        InjectFn && i_inject = nullptr
+    ){
+        using value_t = std::iterator_traits<IterType>::value_type;
+        auto compare = wrap_compare(std::forward<CompareFn>(i_compare));
+        auto inject = wrap_inject(std::forward<InjectFn>(i_inject));
+        if(begin == end)return;
+
+        for(IterType current = begin;current != end;++current){
+            IterType front = current;
+            for(IterType inner = current + 1;inner != end;++inner){
+                if(compare(*inner,*front,reverse)){
+                    front = inner;
+                }
+            }
+            if(front != current){
+                std::swap(*front,*current);
+                inject(std::distance(begin,front),std::distance(begin,current));
+            }
+        }
+    }
+
+    /// @brief 基础的冒泡排序，时间复杂度O(n^2) Tier:E
+    /// @param begin   开始
+    /// @param end     结束
+    /// @param compare 比较函数 
+    /// @param reverse 是否反转排序方向
+    /// @param inject  每次进行一次数据交换后进行的操作    /// @par 算法规律记录
+    /// @code
+    /// a b c d e f g
+    /// 从0号位开始如果 a > 下一个就交换持续,执行(n-(index+1))(index从0开始)次,执行(n-1)轮次
+    /// 其他的类似
+    /// 可引入优化 swapped,如果swapped为false就可以提前跑了
+    /// 比如
+    /// 3 2 1 排序
+    /// 3 > 2 交换 2 3 1
+    /// 3 > 1 交换 2 1 3
+    /// 2 > 1 交换 1 2 3
+    /// 此时执行了(n-2)次了,因此不要进行交换了
+    /// 已经执行(n-1)轮.离开
+    /// @endcode 
+    template<IsRandomAccessIterator IterType,
+            IsCompareFn<typename std::iterator_traits<IterType>::value_type>  CompareFn,
+            IsInjectFn InjectFn = std::nullptr_t
+        > 
+    void bubble(
+        IterType begin,
+        IterType end,
+        CompareFn&& i_compare,
+        bool reverse = false,
+        InjectFn && i_inject = nullptr
+    ){
+        auto compare = wrap_compare(std::forward<CompareFn>(i_compare));
+        auto inject = wrap_inject(std::forward<InjectFn>(i_inject));
+        if(begin == end)return;
+        bool swapped = true;
+    
+        for(IterType current = begin;current < (end - 1) && swapped;++current){
+            swapped = false;
+            for(IterType i_current = begin;i_current < (end - 1 - (current - begin));++i_current){
+                if(compare(*(i_current+1),*i_current,reverse)){
+                    std::swap(*i_current,*(i_current+1));
+                    inject(std::distance(begin,i_current),std::distance(begin,i_current + 1));
+                    swapped = true;
+                }
+            }
+        }
+    }
+
+    /// @brief 依旧冒泡优化
+    template<IsRandomAccessIterator IterType,
+            IsCompareFn<typename std::iterator_traits<IterType>::value_type>  CompareFn,
+            IsInjectFn InjectFn = std::nullptr_t
+        > 
+    void odd_even(
+        IterType begin,
+        IterType end,
+        CompareFn&& i_compare,
+        bool reverse = false,
+        InjectFn && i_inject = nullptr
+    ){
+        auto compare = wrap_compare(std::forward<CompareFn>(i_compare));
+        auto inject = wrap_inject(std::forward<InjectFn>(i_inject));
+        if(begin == end)return;
+        bool swapped = true;
+    
+        while(swapped){
+            swapped = false;
+            // 偶数对
+            for(IterType i = begin;i < end - 1;i += 2){
+                if(compare(*(i + 1),*i,reverse)){
+                    std::swap(*(i+1),*i);
+                    inject(std::distance(begin,i+1), std::distance(begin,i));
+                    swapped = true;
+                }
+            }
+            for(IterType i = begin + 1;i < end - 1;i += 2){
+                if(compare(*(i + 1),*i,reverse)){
+                    std::swap(*(i+1),*i);
+                    inject(std::distance(begin,i+1), std::distance(begin,i));
+                    swapped = true;
+                }
+            }
+        }
+    }
+
+    //////// ENTERTAIN ONLY ////////
+
     // 娱乐算法
     #ifndef ALIB5_ALGO_DISABLE_ENTERTAIN
     /// @brief 猴子排序,交换版本,主要是shuffle无法进行inject
@@ -580,7 +689,7 @@ namespace alib5::algo::sort{
     /// 同时建议swapbetchecks为奇数,不然只有两个元素时换了一轮和没有一样
     template<
             size_t SwapsBetweenChecks = 31,
-            IsIterator IterType,
+            IsRandomAccessIterator IterType,
             IsCompareFn<typename std::iterator_traits<IterType>::value_type>  CompareFn,
             IsInjectFn InjectFn = std::nullptr_t
         > 
@@ -630,7 +739,7 @@ namespace alib5::algo::sort{
     template<
             class TimerBasic = std::chrono::milliseconds,
             size_t MultiplyBase = 1,
-            IsIterator IterType
+            IsRandomAccessIterator IterType
         > 
     void sleep(
         IterType begin,
