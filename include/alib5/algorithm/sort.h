@@ -52,27 +52,32 @@ namespace alib5::algo::sort{
 
     template<class IterType,class Fn> 
     struct InjectPosIterator{
+        using iterator_concept  = std::random_access_iterator_tag;
         using iterator_category = typename std::iterator_traits<IterType>::iterator_category;
         using value_type        = typename std::iterator_traits<IterType>::value_type;
         using difference_type   = typename std::iterator_traits<IterType>::difference_type;
         using pointer           = typename std::iterator_traits<IterType>::pointer;
         using reference         = typename std::iterator_traits<IterType>::reference;
 
-        IterType it;
+        IterType it {};
         size_t data { 0 };
 
-        template<class R>
-        InjectPosIterator(IterType it,R &&)
-        :it(it){}
+        InjectPosIterator() = default;
 
-        void operator++() requires requires(IterType it){ ++it; } { 
+        template<class R>
+        InjectPosIterator(IterType it,R &&,size_t pos = 0)
+        :it(it),data(pos){}
+
+        InjectPosIterator& operator++() requires requires(IterType it){ ++it; } { 
             ++it;
             ++data; 
+            return *this;
         }
 
-        void operator--() requires requires(IterType it){ --it; } { 
+        InjectPosIterator& operator--() requires requires(IterType it){ --it; } { 
             --it;
             --data; 
+            return *this;
         }
 
         InjectPosIterator operator++(int) requires requires(IterType it){ ++it; } {
@@ -85,35 +90,85 @@ namespace alib5::algo::sort{
             auto tmp = *this;
             --(*this);
             return tmp;
+        }
+
+        InjectPosIterator& operator+=(difference_type n) requires requires(IterType it,difference_type n){ it += n; } {
+            it += n;
+            data += n;
+            return *this;
+        }
+
+        InjectPosIterator& operator-=(difference_type n) requires requires(IterType it,difference_type n){ it -= n; } {
+            it -= n;
+            data -= n;
+            return *this;
+        }
+
+        InjectPosIterator operator+(difference_type n) const requires requires(IterType it,difference_type n){ it + n; } {
+            auto tmp = *this;
+            tmp += n;
+            return tmp;
+        }
+
+        friend InjectPosIterator operator+(difference_type n, const InjectPosIterator& other) requires requires(IterType it,difference_type n){ it + n; } {
+            return other + n;
+        }
+
+        InjectPosIterator operator-(difference_type n) const requires requires(IterType it,difference_type n){ it - n; } {
+            auto tmp = *this;
+            tmp -= n;
+            return tmp;
+        }
+
+        difference_type operator-(const InjectPosIterator& other) const requires requires(IterType a,IterType b){ a - b; } {
+            return it - other.it;
+        }
+
+        reference operator[] (difference_type n) const requires requires(IterType it,difference_type n){ it[n]; } {
+            return it[n];
         }
         
         size_t get_index() const { 
             return data; 
         } 
         decltype(auto) operator*() const { return *it; }
+        pointer operator->() const requires requires(IterType it){ it.operator->(); } || std::is_pointer_v<IterType> {
+            if constexpr (std::is_pointer_v<IterType>) return it;
+            else return it.operator->();
+        }
+
         bool operator!=(const InjectPosIterator& other) const { return it != other.it; }
         bool operator==(const InjectPosIterator& other) const { return it == other.it; }
+        bool operator<(const InjectPosIterator& other) const requires requires(IterType a,IterType b){ a < b; } { return it < other.it; }
+        bool operator>(const InjectPosIterator& other) const requires requires(IterType a,IterType b){ a > b; } { return it > other.it; }
+        bool operator<=(const InjectPosIterator& other) const requires requires(IterType a,IterType b){ a <= b; } { return it <= other.it; }
+        bool operator>=(const InjectPosIterator& other) const requires requires(IterType a,IterType b){ a >= b; } { return it >= other.it; }
     };
 
     template<class IterType>
     struct InjectPosIterator<IterType,std::nullptr_t>{
+        using iterator_concept  = std::random_access_iterator_tag;
         using iterator_category = typename std::iterator_traits<IterType>::iterator_category;
         using value_type        = typename std::iterator_traits<IterType>::value_type;
         using difference_type   = typename std::iterator_traits<IterType>::difference_type;
         using pointer           = typename std::iterator_traits<IterType>::pointer;
         using reference         = typename std::iterator_traits<IterType>::reference;
 
-        IterType it;
+        IterType it {};
 
-        InjectPosIterator(IterType it,std::nullptr_t)
+        InjectPosIterator() = default;
+
+        InjectPosIterator(IterType it,std::nullptr_t,size_t = 0)
         :it(it){}
 
-        void operator++() requires requires(IterType it){ ++it; } { 
+        InjectPosIterator& operator++() requires requires(IterType it){ ++it; } { 
             ++it;
+            return *this;
         }
 
-        void operator--() requires requires(IterType it){ --it; } { 
+        InjectPosIterator& operator--() requires requires(IterType it){ --it; } { 
             --it;
+            return *this;
         }
 
         InjectPosIterator operator++(int) requires requires(IterType it){ ++it; } {
@@ -128,17 +183,72 @@ namespace alib5::algo::sort{
             return tmp;
         }
 
+        InjectPosIterator& operator+=(difference_type n) requires requires(IterType it,difference_type n){ it += n; } {
+            it += n;
+            return *this;
+        }
+
+        InjectPosIterator& operator-=(difference_type n) requires requires(IterType it,difference_type n){ it -= n; } {
+            it -= n;
+            return *this;
+        }
+
+        InjectPosIterator operator+(difference_type n) const requires requires(IterType it,difference_type n){ it + n; } {
+            auto tmp = *this;
+            tmp += n;
+            return tmp;
+        }
+
+        friend InjectPosIterator operator+(difference_type n, const InjectPosIterator& other) requires requires(IterType it,difference_type n){ it + n; } {
+            return other + n;
+        }
+
+        InjectPosIterator operator-(difference_type n) const requires requires(IterType it,difference_type n){ it - n; } {
+            auto tmp = *this;
+            tmp -= n;
+            return tmp;
+        }
+
+        difference_type operator-(const InjectPosIterator& other) const requires requires(IterType a,IterType b){ a - b; } {
+            return it - other.it;
+        }
+
+        reference operator[] (difference_type n) const requires requires(IterType it,difference_type n){ it[n]; } {
+            return it[n];
+        }
+
         size_t get_index() const { return 0; }     
         decltype(auto) operator*() const { return *it; }   
+        pointer operator->() const requires requires(IterType it){ it.operator->(); } || std::is_pointer_v<IterType> {
+            if constexpr (std::is_pointer_v<IterType>) return it;
+            else return it.operator->();
+        }
         
         bool operator!=(const InjectPosIterator& other) const { return it != other.it; }
         bool operator==(const InjectPosIterator& other) const { return it == other.it; }
+        bool operator<(const InjectPosIterator& other) const requires requires(IterType a,IterType b){ a < b; } { return it < other.it; }
+        bool operator>(const InjectPosIterator& other) const requires requires(IterType a,IterType b){ a > b; } { return it > other.it; }
+        bool operator<=(const InjectPosIterator& other) const requires requires(IterType a,IterType b){ a <= b; } { return it <= other.it; }
+        bool operator>=(const InjectPosIterator& other) const requires requires(IterType a,IterType b){ a >= b; } { return it >= other.it; }
     };
 
     // 推导指导，让nullptr就是nullptr_t
     template<class IterType,class R>
-    InjectPosIterator(IterType,R &&) -> InjectPosIterator<IterType,std::decay_t<R>>;
+    InjectPosIterator(IterType,R &&,size_t = 0) -> InjectPosIterator<IterType,std::decay_t<R>>;
     
+    template<class T> struct is_inject_pos_iterator : std::false_type {};
+    template<class I, class F> struct is_inject_pos_iterator<InjectPosIterator<I, F>> : std::true_type {};
+    template<class T> constexpr bool is_inject_pos_iterator_v = is_inject_pos_iterator<std::decay_t<T>>::value;
+
+    template<class IterType, class Fn>
+    auto make_inject_iterator(IterType it, Fn&& fn, size_t pos = 0) {
+        if constexpr (is_inject_pos_iterator_v<IterType>) {
+            return it;
+        } else {
+            return InjectPosIterator<IterType, std::decay_t<Fn>>(it, std::forward<Fn>(fn), pos);
+        }
+    }
+
     template<class T> concept IsRandomAccessIterator = 
         std::random_access_iterator<T> ||
         std::is_pointer_v<T>;
@@ -179,8 +289,8 @@ namespace alib5::algo::sort{
             IsInjectFn InjectFn = std::nullptr_t
             > 
     void insertion(
-        IterType begin,
-        IterType end,
+        IterType i_begin,
+        IterType i_end,
         CompareFn&& i_compare,
         bool reverse = false,
         InjectFn && i_inject = nullptr
@@ -188,15 +298,19 @@ namespace alib5::algo::sort{
         using value_t = std::iterator_traits<IterType>::value_type;
         auto compare = wrap_compare(std::forward<CompareFn>(i_compare));
         auto inject = wrap_inject(std::forward<InjectFn>(i_inject));
+        
+        auto begin = make_inject_iterator(i_begin, i_inject, 0);
+        auto end = make_inject_iterator(i_end, i_inject, std::distance(i_begin, i_end));
+
         if(begin == end)return;
 
-        for(IterType current = (begin + 1);current < end;++current){
+        for(auto current = (begin + 1);current < end;++current){
             value_t val = std::move(*current);
-            IterType j = current;
+            auto j = current;
 
             while(j > begin && compare(val,*(j-1),reverse)){
                 *j = std::move(*(j-1));
-                inject(std::distance(begin,j),std::distance(begin,j-1));
+                inject(j.get_index(),(j-1).get_index());
                 --j;
             }
             *j = std::move(val);
@@ -217,8 +331,8 @@ namespace alib5::algo::sort{
             IsInjectFn InjectFn = std::nullptr_t
             > 
     void shell(
-        IterType begin,
-        IterType end,
+        IterType i_begin,
+        IterType i_end,
         CompareFn&& i_compare,
         bool reverse = false,
         InjectFn && i_inject = nullptr
@@ -226,6 +340,10 @@ namespace alib5::algo::sort{
         using value_t = std::iterator_traits<IterType>::value_type;
         auto compare = wrap_compare(std::forward<CompareFn>(i_compare));
         auto inject = wrap_inject(std::forward<InjectFn>(i_inject));
+
+        auto begin = make_inject_iterator(i_begin, i_inject, 0);
+        auto end = make_inject_iterator(i_end, i_inject, std::distance(i_begin, i_end));
+
         if(begin == end)return;
 
         size_t len = std::distance(begin,end);
@@ -254,13 +372,13 @@ namespace alib5::algo::sort{
         while(gap > 0){
             for(size_t begin_pos = 0;begin_pos < gap;++begin_pos){
                 for(size_t c_begin = begin_pos + gap;c_begin < len;c_begin += gap){
-                    IterType s_begin = begin + c_begin;
-                    IterType j = s_begin;
+                    auto s_begin = begin + c_begin;
+                    auto j = s_begin;
                     value_t val = std::move(*s_begin);
 
                     while(j > (begin + begin_pos) && compare(val,*(j - gap),reverse)){
                         *j = std::move(*(j - gap));
-                        inject(std::distance(begin,j - gap),std::distance(begin,j));
+                        inject((j - gap).get_index(),j.get_index());
                         j -= gap;
                     }
                     *j = std::move(val);
@@ -277,21 +395,25 @@ namespace alib5::algo::sort{
             IsInjectFn InjectFn = std::nullptr_t
         > 
     void gnome(
-        IterType begin,
-        IterType end,
+        IterType i_begin,
+        IterType i_end,
         CompareFn&& i_compare,
         bool reverse = false,
         InjectFn && i_inject = nullptr
     ){
         auto compare = wrap_compare(std::forward<CompareFn>(i_compare));
         auto inject = wrap_inject(std::forward<InjectFn>(i_inject));
+
+        auto begin = make_inject_iterator(i_begin, i_inject, 0);
+        auto end = make_inject_iterator(i_end, i_inject, std::distance(i_begin, i_end));
+
         if(begin == end)return;
         
-        IterType current = begin;
+        auto current = begin;
         while(current < end - 1){
             if(compare(*(current + 1),*current,reverse)){
                 std::swap(*current,*(current + 1));
-                inject(std::distance(begin,current),std::distance(begin,current + 1));
+                inject(current.get_index(),(current + 1).get_index());
                 if(current != begin)--current;
                 else ++current;
             }else ++current;
@@ -307,8 +429,8 @@ namespace alib5::algo::sort{
         IsInjectFn InjectFn = std::nullptr_t
     > 
     void comb(
-        IterType begin,
-        IterType end,
+        IterType i_begin,
+        IterType i_end,
         CompareFn&& i_compare,
         bool reverse = false,
         InjectFn && i_inject = nullptr
@@ -316,6 +438,10 @@ namespace alib5::algo::sort{
         static_assert(GapFactor > 1, "Gap factor is required to be bigger than 1!");
         auto compare = wrap_compare(std::forward<CompareFn>(i_compare));
         auto inject = wrap_inject(std::forward<InjectFn>(i_inject));
+
+        auto begin = make_inject_iterator(i_begin, i_inject, 0);
+        auto end = make_inject_iterator(i_end, i_inject, std::distance(i_begin, i_end));
+
         if(begin == end)return;
         size_t len = std::distance(begin,end);
         size_t gap = len;
@@ -326,10 +452,10 @@ namespace alib5::algo::sort{
             gap /= GapFactor;
             if(gap < 1)gap = 1;
 
-            for(IterType i = begin;i < end - gap;++i){
+            for(auto i = begin;i < end - gap;++i){
                 if(compare(*(i + gap), *i, reverse)){
                     std::swap(*i, *(i + gap));
-                    inject(std::distance(begin, i), std::distance(begin, i + gap));
+                    inject(i.get_index(), (i + gap).get_index());
                     swapped = true;
                 }
             }
@@ -343,26 +469,30 @@ namespace alib5::algo::sort{
         IsInjectFn InjectFn = std::nullptr_t
     > 
     void cocktail(
-        IterType begin,
-        IterType end,
+        IterType i_begin,
+        IterType i_end,
         CompareFn&& i_compare,
         bool reverse = false,
         InjectFn && i_inject = nullptr
     ){
         auto compare = wrap_compare(std::forward<CompareFn>(i_compare));
         auto inject = wrap_inject(std::forward<InjectFn>(i_inject));
+
+        auto begin = make_inject_iterator(i_begin, i_inject, 0);
+        auto end = make_inject_iterator(i_end, i_inject, std::distance(i_begin, i_end));
+
         if(begin == end)return;
         bool swapped = true;
     
-        IterType high_sorted = end;
-        IterType low_sorted = begin;
+        auto high_sorted = end;
+        auto low_sorted = begin;
         while(low_sorted < high_sorted && swapped){
             swapped = false;
 
-            for(IterType i_current = low_sorted;i_current < high_sorted - 1;++i_current){
+            for(auto i_current = low_sorted;i_current < high_sorted - 1;++i_current){
                 if(compare(*(i_current+1),*i_current,reverse)){
                     std::swap(*i_current,*(i_current+1));
-                    inject(std::distance(begin,i_current),std::distance(begin,i_current + 1));
+                    inject(i_current.get_index(),(i_current + 1).get_index());
                     swapped = true;
                 }
             }
@@ -370,10 +500,10 @@ namespace alib5::algo::sort{
             // 这里也可以提前剪枝
             if(!swapped) [[unlikely]] break;
 
-            for(IterType i_current = high_sorted - 1;i_current > low_sorted;--i_current){
+            for(auto i_current = high_sorted - 1;i_current > low_sorted;--i_current){
                 if(compare(*i_current,*(i_current-1),reverse)){
                     std::swap(*i_current,*(i_current-1));
-                    inject(std::distance(begin,i_current),std::distance(begin,i_current - 1));
+                    inject(i_current.get_index(),(i_current - 1).get_index());
                     swapped = true;
                 }
             }
@@ -401,13 +531,13 @@ namespace alib5::algo::sort{
                     if(compare(*cur,*high,reverse)){
                         if(i != cur){
                             std::swap(*i,*cur);
-                            inject(std::distance(begin,i),std::distance(begin,cur));
+                            inject(i.get_index(),cur.get_index());
                         }
                         ++i;
                     }
                 }
                 std::swap(*i,*high);
-                inject(std::distance(begin,i),std::distance(begin,high));
+                inject(i.get_index(),high.get_index());
                 
                 if(i > (low+1)){
                     nodes.emplace_back(low,i-1);
@@ -454,7 +584,7 @@ namespace alib5::algo::sort{
                         }
 
                         std::swap(*l, *h);
-                        inject(std::distance(begin,l),std::distance(begin,h));
+                        inject(l.get_index(),h.get_index());
                     }
                     ++l;
                     --h;
@@ -493,10 +623,10 @@ namespace alib5::algo::sort{
                 bool c3 = compare(*low,*high,reverse);
                 if(!c1 && c2){
                     std::swap(*low,*pivot);
-                    inject(std::distance(begin,low),std::distance(begin,pivot));
+                    inject(low.get_index(),pivot.get_index());
                 }else if(c1 && !c2){
                     std::swap(*high,*pivot);
-                    inject(std::distance(begin,high),std::distance(begin,pivot));
+                    inject(high.get_index(),pivot.get_index());
                 }
             }
 
@@ -522,8 +652,8 @@ namespace alib5::algo::sort{
             IsInjectFn InjectFn = std::nullptr_t
     > 
     void quick(
-        IterType begin,
-        IterType end,
+        IterType i_begin,
+        IterType i_end,
         CompareFn&& i_compare,
         bool reverse = false,
         InjectFn && i_inject = nullptr
@@ -531,14 +661,18 @@ namespace alib5::algo::sort{
         using value_t = std::iterator_traits<IterType>::value_type;
         auto compare = wrap_compare(std::forward<CompareFn>(i_compare));
         auto inject = wrap_inject(std::forward<InjectFn>(i_inject));
+        
+        auto begin = make_inject_iterator(i_begin, i_inject, 0);
+        auto end = make_inject_iterator(i_end, i_inject, std::distance(i_begin, i_end));
+
         if(begin == end)return;
     
         // 这里手动实现一个简单的stack
         struct Node{
-            IterType low;
-            IterType high;
+            decltype(begin) low;
+            decltype(begin) high;
 
-            Node(IterType l,IterType h):low{l},high{h}{}
+            Node(decltype(begin) l,decltype(begin) h):low{l},high{h}{}
         };
 
         std::vector<Node> stack;
@@ -550,8 +684,8 @@ namespace alib5::algo::sort{
             Node poped = stack.back();
             stack.pop_back();
 
-            IterType low = poped.low;
-            IterType high = poped.high;
+            auto low = poped.low;
+            auto high = poped.high;
 
             PartitionMethod::partition(low,high,compare,
                         reverse,inject,stack,begin,end);
@@ -571,8 +705,8 @@ namespace alib5::algo::sort{
         IsInjectFn InjectFn = std::nullptr_t
         > 
     void selection(
-        IterType begin,
-        IterType end,
+        IterType i_begin,
+        IterType i_end,
         CompareFn&& i_compare,
         bool reverse = false,
         InjectFn && i_inject = nullptr
@@ -580,18 +714,22 @@ namespace alib5::algo::sort{
         using value_t = std::iterator_traits<IterType>::value_type;
         auto compare = wrap_compare(std::forward<CompareFn>(i_compare));
         auto inject = wrap_inject(std::forward<InjectFn>(i_inject));
+
+        auto begin = make_inject_iterator(i_begin, i_inject, 0);
+        auto end = make_inject_iterator(i_end, i_inject, std::distance(i_begin, i_end));
+
         if(begin == end)return;
 
-        for(IterType current = begin;current != end;++current){
-            IterType front = current;
-            for(IterType inner = current + 1;inner != end;++inner){
+        for(auto current = begin;current != end;++current){
+            auto front = current;
+            for(auto inner = current + 1;inner != end;++inner){
                 if(compare(*inner,*front,reverse)){
                     front = inner;
                 }
             }
             if(front != current){
                 std::swap(*front,*current);
-                inject(std::distance(begin,front),std::distance(begin,current));
+                inject(front.get_index(),current.get_index());
             }
         }
     }
@@ -620,23 +758,27 @@ namespace alib5::algo::sort{
             IsInjectFn InjectFn = std::nullptr_t
         > 
     void bubble(
-        IterType begin,
-        IterType end,
+        IterType i_begin,
+        IterType i_end,
         CompareFn&& i_compare,
         bool reverse = false,
         InjectFn && i_inject = nullptr
     ){
         auto compare = wrap_compare(std::forward<CompareFn>(i_compare));
         auto inject = wrap_inject(std::forward<InjectFn>(i_inject));
+
+        auto begin = make_inject_iterator(i_begin, i_inject, 0);
+        auto end = make_inject_iterator(i_end, i_inject, std::distance(i_begin, i_end));
+
         if(begin == end)return;
         bool swapped = true;
     
-        for(IterType current = begin;current < (end - 1) && swapped;++current){
+        for(auto current = begin;current < (end - 1) && swapped;++current){
             swapped = false;
-            for(IterType i_current = begin;i_current < (end - 1 - (current - begin));++i_current){
+            for(auto i_current = begin;i_current < (end - 1 - (current.get_index()));++i_current){
                 if(compare(*(i_current+1),*i_current,reverse)){
                     std::swap(*i_current,*(i_current+1));
-                    inject(std::distance(begin,i_current),std::distance(begin,i_current + 1));
+                    inject(i_current.get_index(),(i_current + 1).get_index());
                     swapped = true;
                 }
             }
@@ -649,31 +791,35 @@ namespace alib5::algo::sort{
             IsInjectFn InjectFn = std::nullptr_t
         > 
     void odd_even(
-        IterType begin,
-        IterType end,
+        IterType i_begin,
+        IterType i_end,
         CompareFn&& i_compare,
         bool reverse = false,
         InjectFn && i_inject = nullptr
     ){
         auto compare = wrap_compare(std::forward<CompareFn>(i_compare));
         auto inject = wrap_inject(std::forward<InjectFn>(i_inject));
+
+        auto begin = make_inject_iterator(i_begin, i_inject, 0);
+        auto end = make_inject_iterator(i_end, i_inject, std::distance(i_begin, i_end));
+
         if(begin == end)return;
         bool swapped = true;
     
         while(swapped){
             swapped = false;
             // 偶数对
-            for(IterType i = begin;i < end - 1;i += 2){
+            for(auto i = begin;i < end - 1;i += 2){
                 if(compare(*(i + 1),*i,reverse)){
                     std::swap(*(i+1),*i);
-                    inject(std::distance(begin,i+1), std::distance(begin,i));
+                    inject((i+1).get_index(), i.get_index());
                     swapped = true;
                 }
             }
-            for(IterType i = begin + 1;i < end - 1;i += 2){
+            for(auto i = begin + 1;i < end - 1;i += 2){
                 if(compare(*(i + 1),*i,reverse)){
                     std::swap(*(i+1),*i);
-                    inject(std::distance(begin,i+1), std::distance(begin,i));
+                    inject((i+1).get_index(), i.get_index());
                     swapped = true;
                 }
             }
@@ -694,14 +840,18 @@ namespace alib5::algo::sort{
             IsInjectFn InjectFn = std::nullptr_t
         > 
     void bozo(
-        IterType begin,
-        IterType end,
+        IterType i_begin,
+        IterType i_end,
         CompareFn&& i_compare,
         bool reverse = false,
         InjectFn && i_inject = nullptr
     ){
         auto compare = wrap_compare(std::forward<CompareFn>(i_compare));
         auto inject = wrap_inject(std::forward<InjectFn>(i_inject));
+
+        auto begin = make_inject_iterator(i_begin, i_inject, 0);
+        auto end = make_inject_iterator(i_end, i_inject, std::distance(i_begin, i_end));
+
         if(begin == end)return;
         bool mess = true;
 
@@ -715,7 +865,7 @@ namespace alib5::algo::sort{
         while(true){
             // 检查顺序
             mess = false;
-            for(IterType i = begin;i < end-1;++i){
+            for(auto i = begin;i < end-1;++i){
                 if(compare(*(i+1),*i,reverse)){
                     mess = true;
                     break;
@@ -724,7 +874,7 @@ namespace alib5::algo::sort{
             if(!mess)break;
 
             // 随机交换
-            for(size_t i = 0;i < SwapsBetweenChecks;++i){
+            for(size_t i = 0; i < SwapsBetweenChecks;++i){
                 size_t a = dist(generator);
                 size_t b = dist(generator);
                 while(b == a)[[unlikely]] b = dist(generator);
