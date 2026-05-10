@@ -224,6 +224,11 @@ namespace alib5{
                 object_mapper = std::move(other.object_mapper);
                 return *this;
             }
+
+            /// 确保内部已经有足够的格子存储数据
+            void reserve(size_t buffer_size){
+                children.reserve(buffer_size);
+            }
             
             /// Object对索引对齐要求十分严格,因此多线程操作一定要自己加锁
             /// 实际上多线程操作数据加锁应该是常识
@@ -370,6 +375,11 @@ namespace alib5{
 
             /// const化
             const AData& operator[](std::ptrdiff_t index) const;
+
+            /// reserve
+            void reserve(size_t size){
+                values.reserve(size);
+            }
 
             /// 保证数量,返回新建立的元素的span
             std::span<AData> ALIB5_API ensure(size_t size);

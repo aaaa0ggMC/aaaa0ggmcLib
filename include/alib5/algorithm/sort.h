@@ -4,7 +4,7 @@
  * @brief 各种排序算法，在reverse=false的情况下，若使用defcompare，即arg1 < arg2,保证升序 \ 
  * 每个算法是怎么测试的可以看docs/aalgorithm.md查看情况
  * @version 5.0
- * @date 2026/05/08
+ * @date 2026/05/10
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -12,9 +12,11 @@
 */
 #ifndef ALIB5_ALGO_SORT_H_INCLUDED
 #define ALIB5_ALGO_SORT_H_INCLUDED
+#include <alib5/algorithm/sort_wrapper_concepts.h>
 #include <utility>
 #include <iterator>
 #include <vector>
+
 #ifndef ALIB5_ALGO_DISABLE_ENTERTAIN
 #include <random>
 #include <chrono>
@@ -23,250 +25,7 @@
 #endif
 
 namespace alib5::algo::sort{
-    template<class T> using default_compare = std::less<T>;
-    template<class Fn> auto wrap_compare(Fn && fn){
-        return [f = std::forward<decltype(fn)>(fn)]<class Tp>(const Tp & a,const Tp & b,bool reverse){
-            return reverse ? f(b,a) : f(a,b);
-        };
-    }
-
-    template<class Fn> auto wrap_inject(Fn && fn){
-        return [f = std::forward<decltype(fn)>(fn)](std::size_t prev,std::size_t aft){
-            if constexpr(!std::is_same_v<std::decay_t<decltype(f)>,std::nullptr_t>){
-                f(prev,aft);
-            }
-        };
-    }
-    
-    template<class Fn,class T> concept IsCompareFn = 
-        requires(Fn && fn,const T& a,const T& b,bool & m){
-            { fn(a,b) } -> std::convertible_to<bool>;
-        };
-    template<class Fn> concept IsInjectFn = 
-        requires(Fn && fn,std::size_t swap_prev,std::size_t swap_aft){
-            fn(swap_prev,swap_aft);
-        } || 
-        requires(){
-            std::is_same_v<std::decay_t<Fn>,std::nullptr_t>;
-        };
-
-    template<class IterType,class Fn> 
-    struct InjectPosIterator{
-        using iterator_concept  = std::random_access_iterator_tag;
-        using iterator_category = typename std::iterator_traits<IterType>::iterator_category;
-        using value_type        = typename std::iterator_traits<IterType>::value_type;
-        using difference_type   = typename std::iterator_traits<IterType>::difference_type;
-        using pointer           = typename std::iterator_traits<IterType>::pointer;
-        using reference         = typename std::iterator_traits<IterType>::reference;
-
-        IterType it {};
-        size_t data { 0 };
-
-        InjectPosIterator() = default;
-
-        template<class R>
-        InjectPosIterator(IterType it,R &&,size_t pos = 0)
-        :it(it),data(pos){}
-
-        InjectPosIterator& operator++() requires requires(IterType it){ ++it; } { 
-            ++it;
-            ++data; 
-            return *this;
-        }
-
-        InjectPosIterator& operator--() requires requires(IterType it){ --it; } { 
-            --it;
-            --data; 
-            return *this;
-        }
-
-        InjectPosIterator operator++(int) requires requires(IterType it){ ++it; } {
-            auto tmp = *this;
-            ++(*this);
-            return tmp;
-        }
-
-        InjectPosIterator operator--(int) requires requires(IterType it){ --it; } {
-            auto tmp = *this;
-            --(*this);
-            return tmp;
-        }
-
-        InjectPosIterator& operator+=(difference_type n) requires requires(IterType it,difference_type n){ it += n; } {
-            it += n;
-            data += n;
-            return *this;
-        }
-
-        InjectPosIterator& operator-=(difference_type n) requires requires(IterType it,difference_type n){ it -= n; } {
-            it -= n;
-            data -= n;
-            return *this;
-        }
-
-        InjectPosIterator operator+(difference_type n) const requires requires(IterType it,difference_type n){ it + n; } {
-            auto tmp = *this;
-            tmp += n;
-            return tmp;
-        }
-
-        friend InjectPosIterator operator+(difference_type n, const InjectPosIterator& other) requires requires(IterType it,difference_type n){ it + n; } {
-            return other + n;
-        }
-
-        InjectPosIterator operator-(difference_type n) const requires requires(IterType it,difference_type n){ it - n; } {
-            auto tmp = *this;
-            tmp -= n;
-            return tmp;
-        }
-
-        difference_type operator-(const InjectPosIterator& other) const requires requires(IterType a,IterType b){ a - b; } {
-            return it - other.it;
-        }
-
-        reference operator[] (difference_type n) const requires requires(IterType it,difference_type n){ it[n]; } {
-            return it[n];
-        }
-        
-        size_t get_index() const { 
-            return data; 
-        } 
-        decltype(auto) operator*() const { return *it; }
-        pointer operator->() const requires requires(IterType it){ it.operator->(); } || std::is_pointer_v<IterType> {
-            if constexpr (std::is_pointer_v<IterType>) return it;
-            else return it.operator->();
-        }
-
-        bool operator!=(const InjectPosIterator& other) const { return it != other.it; }
-        bool operator==(const InjectPosIterator& other) const { return it == other.it; }
-        bool operator<(const InjectPosIterator& other) const requires requires(IterType a,IterType b){ a < b; } { return it < other.it; }
-        bool operator>(const InjectPosIterator& other) const requires requires(IterType a,IterType b){ a > b; } { return it > other.it; }
-        bool operator<=(const InjectPosIterator& other) const requires requires(IterType a,IterType b){ a <= b; } { return it <= other.it; }
-        bool operator>=(const InjectPosIterator& other) const requires requires(IterType a,IterType b){ a >= b; } { return it >= other.it; }
-    };
-
-    template<class IterType>
-    struct InjectPosIterator<IterType,std::nullptr_t>{
-        using iterator_concept  = std::random_access_iterator_tag;
-        using iterator_category = typename std::iterator_traits<IterType>::iterator_category;
-        using value_type        = typename std::iterator_traits<IterType>::value_type;
-        using difference_type   = typename std::iterator_traits<IterType>::difference_type;
-        using pointer           = typename std::iterator_traits<IterType>::pointer;
-        using reference         = typename std::iterator_traits<IterType>::reference;
-
-        IterType it {};
-
-        InjectPosIterator() = default;
-
-        InjectPosIterator(IterType it,std::nullptr_t,size_t = 0)
-        :it(it){}
-
-        InjectPosIterator& operator++() requires requires(IterType it){ ++it; } { 
-            ++it;
-            return *this;
-        }
-
-        InjectPosIterator& operator--() requires requires(IterType it){ --it; } { 
-            --it;
-            return *this;
-        }
-
-        InjectPosIterator operator++(int) requires requires(IterType it){ ++it; } {
-            auto tmp = *this;
-            ++(*this);
-            return tmp;
-        }
-
-        InjectPosIterator operator--(int) requires requires(IterType it){ --it; } {
-            auto tmp = *this;
-            --(*this);
-            return tmp;
-        }
-
-        InjectPosIterator& operator+=(difference_type n) requires requires(IterType it,difference_type n){ it += n; } {
-            it += n;
-            return *this;
-        }
-
-        InjectPosIterator& operator-=(difference_type n) requires requires(IterType it,difference_type n){ it -= n; } {
-            it -= n;
-            return *this;
-        }
-
-        InjectPosIterator operator+(difference_type n) const requires requires(IterType it,difference_type n){ it + n; } {
-            auto tmp = *this;
-            tmp += n;
-            return tmp;
-        }
-
-        friend InjectPosIterator operator+(difference_type n, const InjectPosIterator& other) requires requires(IterType it,difference_type n){ it + n; } {
-            return other + n;
-        }
-
-        InjectPosIterator operator-(difference_type n) const requires requires(IterType it,difference_type n){ it - n; } {
-            auto tmp = *this;
-            tmp -= n;
-            return tmp;
-        }
-
-        difference_type operator-(const InjectPosIterator& other) const requires requires(IterType a,IterType b){ a - b; } {
-            return it - other.it;
-        }
-
-        reference operator[] (difference_type n) const requires requires(IterType it,difference_type n){ it[n]; } {
-            return it[n];
-        }
-
-        size_t get_index() const { return 0; }     
-        decltype(auto) operator*() const { return *it; }   
-        pointer operator->() const requires requires(IterType it){ it.operator->(); } || std::is_pointer_v<IterType> {
-            if constexpr (std::is_pointer_v<IterType>) return it;
-            else return it.operator->();
-        }
-        
-        bool operator!=(const InjectPosIterator& other) const { return it != other.it; }
-        bool operator==(const InjectPosIterator& other) const { return it == other.it; }
-        bool operator<(const InjectPosIterator& other) const requires requires(IterType a,IterType b){ a < b; } { return it < other.it; }
-        bool operator>(const InjectPosIterator& other) const requires requires(IterType a,IterType b){ a > b; } { return it > other.it; }
-        bool operator<=(const InjectPosIterator& other) const requires requires(IterType a,IterType b){ a <= b; } { return it <= other.it; }
-        bool operator>=(const InjectPosIterator& other) const requires requires(IterType a,IterType b){ a >= b; } { return it >= other.it; }
-    };
-
-    // 推导指导，让nullptr就是nullptr_t
-    template<class IterType,class R>
-    InjectPosIterator(IterType,R &&,size_t = 0) -> InjectPosIterator<IterType,std::decay_t<R>>;
-    
-    template<class T> struct is_inject_pos_iterator : std::false_type {};
-    template<class I, class F> struct is_inject_pos_iterator<InjectPosIterator<I, F>> : std::true_type {};
-    template<class T> constexpr bool is_inject_pos_iterator_v = is_inject_pos_iterator<std::decay_t<T>>::value;
-
-    template<class IterType, class Fn>
-    auto make_inject_iterator(IterType it, Fn&& fn, size_t pos = 0) {
-        if constexpr (is_inject_pos_iterator_v<IterType>) {
-            return it;
-        } else {
-            return InjectPosIterator<IterType, std::decay_t<Fn>>(it, std::forward<Fn>(fn), pos);
-        }
-    }
-
-    template<class T> concept IsRandomAccessIterator = 
-        std::random_access_iterator<T> ||
-        std::is_pointer_v<T>;
-
-    template<class T> concept IsForwardIterator = 
-        std::forward_iterator<T>;
-    
-    template<class T> concept IsBiDirectionalIterator = 
-        std::bidirectional_iterator<T>;
-
-    /// 支持随机访问和forward访问
-    template<class T> concept IsGenericIterator = 
-        IsBiDirectionalIterator<T> ||
-        IsForwardIterator<T>       ||
-        IsRandomAccessIterator<T>  ;
-    
     ////// RANDOM ACCESS ITERATOR ONLY //////
-
     /// @brief [R]基础的插入排序，时间复杂度O(n^2)   Tier: D
     /// @param begin   开始
     /// @param end     结束
