@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 一些基本的操作符
  * @version 0.1
- * @date 2026/03/19
+ * @date 2026/05/10
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -19,13 +19,8 @@
 #include <list>
 
 namespace alib5{
-    /// @brief 仅用来识别日志终止
-    struct ALIB5_API LogEnd{};
-    typedef void (*EndLogFn)(LogEnd);
     /// @brief 流式输出日志终止表示
     inline void ALIB5_API endlog(LogEnd){}
-    /// @brief 另一种方式
-    constexpr LogEnd fls = {};
     /// @brief 默认省略符号
     constexpr std::string_view default_omit_str = "...[+{} bytes]";
 

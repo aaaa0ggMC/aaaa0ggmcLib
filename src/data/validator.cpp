@@ -385,7 +385,7 @@ std::pmr::string Validator::from_adata(const AData & doc){
                     else if(bg_parse == "BOOL")restriction.type_restrict = restriction.RBool;
                     else{
                         std::format_to(std::back_inserter(errors),
-                            "Unknown type \"{}\" when parsing array! VISIT_TREE \"{}\"",
+                            "Unknown type \"{}\" when parsing array! VISIT_TREE \"{}\" \n",
                             v.view(),
                             visit_tree
                         );
@@ -393,7 +393,7 @@ std::pmr::string Validator::from_adata(const AData & doc){
                     }
                 }else{
                     std::format_to(std::back_inserter(errors),
-                        "Empty typename when parsing TYPE! VISIT_TREE \"{}\"",
+                        "Empty typename when parsing TYPE! VISIT_TREE \"{}\" \n",
                         visit_tree
                     );
                     return false;
@@ -402,7 +402,7 @@ std::pmr::string Validator::from_adata(const AData & doc){
                 auto v = cursor.next();
                 if(!v){
                     std::format_to(std::back_inserter(errors),
-                        "Empty method when parsing VALIDATE VISIT_TREE:{}\n",
+                        "Empty method when parsing VALIDATE VISIT_TREE:{} \n",
                         visit_tree
                     );
                     return false;
@@ -421,7 +421,7 @@ std::pmr::string Validator::from_adata(const AData & doc){
                     }
                     if(v.view() != rb){
                         std::format_to(std::back_inserter(errors),
-                            "Unclosed args when parsing VALIDATE VISIT_TREE:{}\n",
+                            "Unclosed args when parsing VALIDATE VISIT_TREE:{} \n",
                             visit_tree
                         );
                         return false;
@@ -435,7 +435,7 @@ std::pmr::string Validator::from_adata(const AData & doc){
                 auto c = cursor.next();
                 if(c.view() == ""){
                     std::format_to(std::back_inserter(errors),
-                        "Empty value when parsing MIN VISIT_TREE:{}\n",
+                        "Empty value when parsing MIN VISIT_TREE:{} \n",
                         visit_tree
                     );
                     return false;
@@ -443,7 +443,7 @@ std::pmr::string Validator::from_adata(const AData & doc){
                 auto val = c.expect<double>();
                 if(!val){
                     std::format_to(std::back_inserter(errors),
-                        "Invalid value \"{}\" when parsing MIN VISIT_TREE:{}\n",
+                        "Invalid value \"{}\" when parsing MIN VISIT_TREE:{} \n",
                         c.view(),
                         visit_tree
                     );
@@ -466,7 +466,7 @@ std::pmr::string Validator::from_adata(const AData & doc){
 
             if(min_v > max_v){
                 std::format_to(std::back_inserter(errors),
-                    "MIN value \"{}\" is greater than MAX value \"{}\" VISIT_TREE:{}\n",
+                    "MIN value \"{}\" is greater than MAX value \"{}\" VISIT_TREE:{} \n",
                     min_v,
                     max_v,
                     visit_tree
@@ -497,9 +497,9 @@ std::pmr::string Validator::from_adata(const AData & doc){
                 break;
             case dtype_t::TArray:{
                 auto & arr = d->array();
-                if(arr.size() < 2){
+                if(arr.size() < 1){
                     std::format_to(std::back_inserter(errors),
-                        "Array size cannot lower than 2 when parsing array! VISIT_TREE {}",
+                        "Array size cannot lower than 1 when parsing array! VISIT_TREE {} \n",
                         visit_tree
                     );
                     continue;
@@ -508,11 +508,17 @@ std::pmr::string Validator::from_adata(const AData & doc){
                 int vi_offset = 0;
                 if(!val[0].is_value()){
                     std::format_to(std::back_inserter(errors),
-                        "Array[0] should be value when parsing array! VISIT_TREE {}",
+                        "Array[0] should be value when parsing array! VISIT_TREE {} \n",
                         visit_tree
                     );
                     continue;
                 }
+                if(arr.size() == 1){
+                    if(parse_restriction(val[0].value().to<std::string>(),visit_tree))*current = restriction;
+                    else continue;
+                    break;
+                }
+
                 bg_parse.clear();
                 for(auto ch : val[0].value().to<std::string>())bg_parse.push_back(std::toupper(ch));
                 if(bg_parse != "LIST" && bg_parse != "TUPLE"){
@@ -523,7 +529,7 @@ std::pmr::string Validator::from_adata(const AData & doc){
                     /// 这里对 value 1 为Value
                     if(!val[1 - vi_offset].is_value()){
                         std::format_to(std::back_inserter(errors),
-                            "First restraint should be value when parsing array! VISIT_TREE {}",
+                            "First restraint should be value when parsing array! VISIT_TREE {} \n",
                             visit_tree
                         );
                     }
@@ -536,7 +542,7 @@ std::pmr::string Validator::from_adata(const AData & doc){
                             if(simp_validate_type(val[2 - vi_offset],*current).first)current->default_value = val[2 - vi_offset];
                             else{
                                 std::format_to(std::back_inserter(errors),
-                                    "Default value doesnt match the restriction \"{}\" VISIT_TREE {}",
+                                    "Default value doesnt match the restriction \"{}\" VISIT_TREE {} \n",
                                     node_type_str(current->type_restrict),
                                     visit_tree
                                 );

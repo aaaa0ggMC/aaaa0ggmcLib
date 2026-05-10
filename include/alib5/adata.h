@@ -1,7 +1,7 @@
 /**@file adata.h
 * @brief 简单的数据结构
 * @author aaaa0ggmc
-* @date 2026/03/04
+* @date 2026/05/10
 * @version 5.0
 * @copyright Copyright(c) 2026 
 */
@@ -12,3 +12,7 @@
 // 一些预制的policy
 #include <alib5/data/data_json.h>
 #include <alib5/data/data_toml.h>
+// 反射支持
+#ifdef ALIB5_ENABLE_REFLECTION
+#include <alib5/data/reflect.h>
+#endif

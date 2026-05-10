@@ -1,7 +1,7 @@
 /**@file autil.h
 * @brief 工具库，提供实用函数
 * @author aaaa0ggmc
-* @date 2026/05/07
+* @date 2026/05/10
 * @version 5.0
 * @copyright Copyright(c) 2026
 */
@@ -80,6 +80,13 @@ namespace alib5{
     constexpr std::array<std::string_view,4> normalize_elapse_movers = {"s","ms","us","ns"};
     constexpr size_t normalize_elapse_ms_index = 1;
 
+
+    //// 因为这个玩意儿完全不携带数据，因此可以用于多库交互 ////
+    /// @brief 仅用来识别日志终止
+    struct ALIB5_API LogEnd{};
+    typedef void (*EndLogFn)(LogEnd);
+    /// @brief 另一种方式
+    constexpr LogEnd fls = {};
 
     /// 判断输入内容是否可以归类于string
     template<class T> concept IsStringLike = std::convertible_to<T,std::string_view>;
