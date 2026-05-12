@@ -105,60 +105,70 @@ namespace alib5::detail {
                     std::meta::nonstatic_data_members_of(^^InT,context)
                 )
             ){
-                constexpr auto original_name = std::meta::identifier_of(item);
+                constexpr auto element_type_info = std::meta::type_of(item);
 
-                std::string_view name = original_name;
+                if constexpr(!std::meta::is_reference_type(element_type_info)){
+                    constexpr auto original_name = std::meta::identifier_of(item);
+                    std::string_view name = original_name;
 
-                constexpr static auto child_annotations = std::define_static_array(
-                    std::meta::annotations_of(item)
-                );
-                constexpr static auto array_annotations = detail::ranges_to_array<std::meta::info,child_annotations.size()>(
-                    child_annotations
-                );
+                    constexpr static auto child_annotations = std::define_static_array(
+                        std::meta::annotations_of(item)
+                    );
+                    constexpr static auto array_annotations = detail::ranges_to_array<std::meta::info,child_annotations.size()>(
+                        child_annotations
+                    );
 
-                // 检测annotation
-                template for(
-                    constexpr auto anno
-                    :
-                    child_annotations
-                ){
-                    constexpr auto anno_type_info = std::meta::type_of(anno);
-                    using AnnotationType = [: anno_type_info :];
-                    using AnnotationBaseType = std::decay_t<AnnotationType>;                
+                    if constexpr(
+                        !has_annotation_with_trait<attr::AttributeTraits::DeseriSkip,array_annotations.size(),array_annotations>() &&
+                        !has_annotation_with_trait<attr::AttributeTraits::GeneralSkip,array_annotations.size(),array_annotations>()
+                    ){
+                        // 检测annotation
+                        template for(
+                            constexpr auto anno
+                            :
+                            child_annotations
+                        ){
+                            constexpr auto anno_type_info = std::meta::type_of(anno);
+                            using AnnotationType = [: anno_type_info :];
+                            using AnnotationBaseType = std::decay_t<AnnotationType>;                
 
-                    if constexpr(requires{
-                        AnnotationBaseType::attribute_trait;
-                    }){
-                        constexpr static auto value_mapping = [: std::meta::constant_of(anno) :];
-                       
-                        if constexpr(AnnotationBaseType::attribute_trait == attr::AttributeTraits::Rename){
-                            if(value_mapping.new_name != nullptr){
-                                name = value_mapping.new_name;
+                            if constexpr(requires{
+                                AnnotationBaseType::attribute_trait;
+                            }){
+                                constexpr static auto value_mapping = [: std::meta::constant_of(anno) :];
+                            
+                                if constexpr(AnnotationBaseType::attribute_trait == attr::AttributeTraits::Rename){
+                                    name = value_mapping.new_name();
+                                }
                             }
                         }
-                    }
-                }
 
-                if constexpr(cfg.debug){
-                    if(debug_logger) [[likely]] {
-                        *debug_logger << "Type         : " << std::meta::display_string_of(^^InT) << fls;
-                        *debug_logger << "OriginalName : " << original_name << fls;
-                        *debug_logger << "MappingName  : " << name << "\n" << fls;
-                        *debug_logger << "ExistInData  : " << root.object().contains(name) << "\n" << fls;
-                    }
-                }
+                        if constexpr(cfg.debug){
+                            if(debug_logger) [[likely]] {
+                                *debug_logger << "Type         : " << std::meta::display_string_of(^^InT) << fls;
+                                *debug_logger << "OriginalName : " << original_name << fls;
+                                *debug_logger << "MappingName  : " << name << "\n" << fls;
+                                *debug_logger << "ExistInData  : " << root.object().contains(name) << "\n" << fls;
+                            }
+                        }
 
-                if(root.object().contains(name)){
-                    _from_adata<
-                        cfg,
-                        array_annotations.size(),
-                        array_annotations
-                    >(fill_data.[: item :], root[name],debug_logger);
+                        if(root.object().contains(name)){
+                            _from_adata<
+                                cfg,
+                                array_annotations.size(),
+                                array_annotations
+                            >(fill_data.[: item :], root[name],debug_logger);
+                        }
+                    }
                 }
             }
 
         }else{
+#ifdef ALIB5_ENABLE_STRICT_REFLECTION
             static_assert(std::meta::is_class_type(^^InT),"Unsupported Structure!");
+#else
+            return;
+#endif
         }
     }   
 }

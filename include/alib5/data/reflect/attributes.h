@@ -10,16 +10,36 @@
  */
 #ifndef ALIB5_ADATA_REFLECT_ATTR
 #define ALIB5_ADATA_REFLECT_ATTR
+#include <string_view>
 #include <limits>
 #include <meta>
+#include <tuple>
 
 namespace alib5{
-    /// attr::mapping 支持重命名的最大长度以及validate中的函数名字长度
-    constexpr std::size_t conf_mapping_maximum_size = 64;
-    /// attr::validate_with_args 单个字符串arg最大长度
-    constexpr std::size_t conf_single_arg_maximum_size = 128;
-
     namespace detail{
+        ///@brief 大小可以在编译期间自动fit的类型
+        template<std::size_t N>
+        struct fixed_string {
+            char data[N]{};
+
+            constexpr fixed_string(const char (&str)[N]){
+                for (std::size_t i = 0; i < N; ++i) {
+                    data[i] = str[i];
+                }
+            }
+
+            constexpr std::string_view view() const {
+                return std::string_view{data, N - 1};
+            }
+
+            constexpr const char * c_str() const {
+                return data;
+            }
+        };
+        template <std::size_t N>
+        fixed_string(const char (&)[N]) -> fixed_string<N>;
+
+
         ///@brief STuple,一个满足StructuralType的在这里替代std::tuple的东西
         template<typename... Args>
         struct STuple;
@@ -32,6 +52,8 @@ namespace alib5{
             T value;
             [[no_unique_address]] STuple<Args...> rest;
             
+            constexpr STuple(T arg,Args... args):value(arg),rest(args...){}
+
             template<std::size_t N>
             constexpr const auto& get() const {
                 if constexpr(N == 0) return value;
@@ -52,8 +74,10 @@ namespace alib5{
         #endif
         };
 
-        template<typename... Args>
-        STuple(Args...) -> STuple<Args...>;
+        template<typename T,typename... Args>
+        STuple(T,Args...) -> STuple<T,Args...>;
+
+        STuple() -> STuple<>;
     }
 
     namespace attr {
@@ -69,16 +93,23 @@ namespace alib5{
             SchemaSkip,
             SchemaRange,
             SchemaValidate,
-            OmitEmpty
+            OmitEmpty,
+            SeriSkip,
+            DeseriSkip,
+            GeneralSkip
         };
 
 /// MultiUse (Serialize[S],Deserialize[D] & Schema[Sc]) ////
         
         /// [SDSc] 重新映射变量的名字
+        template<detail::fixed_string S>
         struct rename {
             constexpr static AttributeTraits attribute_trait = AttributeTraits::Rename;
+            
             /// 新的名字
-            char new_name [conf_mapping_maximum_size];
+            constexpr static std::string_view new_name() {
+                return S.view();
+            }
         };
 
         /// [SDSc] 对于 container<...> ，允许将annotation穿透给内部数据
@@ -101,7 +132,21 @@ namespace alib5{
                 }(std::make_index_sequence<N>());
             }
         };
+
+        /// 通用skip
+        struct skip{
+            constexpr static AttributeTraits attribute_trait = AttributeTraits::GeneralSkip;
+        };
         
+//// Deserialize Only ///
+namespace deseri{
+        /// 反序列化直接跳过这个
+        struct skip{
+            constexpr static AttributeTraits attribute_trait = AttributeTraits::DeseriSkip;
+        };
+
+}
+
 
 //// Serialize Only ////
 namespace seri{
@@ -110,6 +155,11 @@ namespace seri{
         /// 因为omit_empty并不影响schema的检测
         struct omit_empty {
             constexpr static AttributeTraits attribute_trait = AttributeTraits::OmitEmpty;
+        };
+
+        /// 序列化直接跳过这个
+        struct skip{
+            constexpr static AttributeTraits attribute_trait = AttributeTraits::SeriSkip;
         };
 
 }
@@ -129,10 +179,13 @@ namespace schema{
         };
 
         /// 用在schema里面进行validate
+        template<detail::fixed_string func_name>
         struct validate{
             constexpr static AttributeTraits attribute_trait = AttributeTraits::SchemaValidate;
 
-            char validate_function [ conf_mapping_maximum_size ];
+            constexpr static std::string_view validate_function() {
+                return func_name.view();
+            }
         };
 
         /// 如何食用这个玩意儿，正如你所见，它只接受引用
@@ -146,13 +199,20 @@ namespace schema{
         };
 
         /// 支持 validate func ( arg1 arg2 ... )的生成
-        template<std::size_t N>
+        template<detail::fixed_string func_name,detail::fixed_string... args>
         struct validate_args{
             constexpr static AttributeTraits attribute_trait = AttributeTraits::ValidateWithArgs;
-            constexpr static std::size_t ArgCount = N;
+            constexpr static std::size_t ArgCount = sizeof...(args);
 
-            char validate_function [ conf_mapping_maximum_size ];
-            char args[N][ conf_single_arg_maximum_size ];
+            constexpr static std::string_view validate_function() {
+                return func_name.view();
+            }
+
+            template<size_t N>
+            constexpr static auto& get_arg() {
+                static constexpr auto t = std::make_tuple(&args...);
+                return *std::get<N>(t);
+            }
         };
 
 }

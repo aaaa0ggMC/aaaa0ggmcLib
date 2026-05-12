@@ -42,7 +42,14 @@ namespace alib5{
         };
 
         /// 检查对应的对象是否含有对应trait的annotation
-        template<attr::AttributeTraits trait,std::size_t N,std::array<std::meta::info, N> annotations> constexpr
+        template<
+            attr::AttributeTraits trait,
+            std::size_t N,
+            std::array<
+                std::meta::info,
+                N
+            > annotations
+        > constexpr
         bool has_annotation_with_trait(){
             template for(
                 constexpr auto anno
@@ -77,7 +84,14 @@ namespace alib5{
         }
 
         /// 进行检查，如果找到了，那么就返回转化后得到的value_mapping
-        template<attr::AttributeTraits trait,std::size_t N,std::array<std::meta::info, N> annotations> constexpr
+        template<
+            attr::AttributeTraits trait,
+            std::size_t N,
+            std::array<
+                std::meta::info,
+                N
+            > annotations
+        > constexpr
         auto annotation_do_if_trait(){
             if constexpr(!has_annotation_with_trait<trait,N,annotations>()){
                 return TraitNotFound{};
@@ -105,7 +119,29 @@ namespace alib5{
             }
         }
 
-        template<class T,size_t N = 0,std::array<std::meta::info,N> annotations> constexpr
+        /// 把各种类ranges类型转换成std::array,类似std::define_static_array干的事情
+        /// 但是std是转换成span,无法进行数据传递
+        template<
+            typename T, 
+            std::size_t N,
+            class K
+        >
+        constexpr auto ranges_to_array(K && val) -> std::array<T, N> {
+            return [&]<std::size_t... Is>(std::index_sequence<Is...>){
+                return std::array<T, N>{ std::forward<K>(val)[Is]... };
+            }(std::make_index_sequence<N>{});
+        }
+
+        // 虽然没用上，但还是留着
+        /// 检查annotation列表中是否存在特定的类型
+        template<
+            class T,
+            size_t N = 0,
+            std::array<
+                std::meta::info,
+                N
+            > annotations
+        > constexpr
         bool has_annotation_of_type(){
             template for(
                 constexpr auto anno
@@ -125,13 +161,6 @@ namespace alib5{
                 }
             }
             return false;
-        }
-
-        template <typename T, std::size_t N,class K>
-        constexpr auto ranges_to_array(K && val) -> std::array<T, N> {
-            return [&]<std::size_t... Is>(std::index_sequence<Is...>){
-                return std::array<T, N>{ std::forward<K>(val)[Is]... };
-            }(std::make_index_sequence<N>{});
         }
     }
 }

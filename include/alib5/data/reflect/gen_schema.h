@@ -72,50 +72,60 @@ namespace alib5::detail {
                     std::meta::nonstatic_data_members_of(^^decayed_T,context)
                 )
             ){
-                constexpr auto original_name = std::meta::identifier_of(item);
-                std::string_view name = original_name;
-                using ValueType = [: std::meta::type_of(item) :];
 
-                constexpr static auto child_annotations = std::define_static_array(
-                    std::meta::annotations_of(item)
-                );
-                constexpr static auto array_annotations = detail::ranges_to_array<std::meta::info,child_annotations.size()>(
-                    child_annotations
-                );
-                // 对于需要skip的直接进行skip
-                if constexpr(
-                    !has_annotation_with_trait<attr::AttributeTraits::SchemaSkip,array_annotations.size(),array_annotations>()
-                ){
-                    // 检测annotation
-                    template for(
-                        constexpr auto anno
-                        :
+                constexpr auto element_type_info = std::meta::type_of(item);
+
+                if constexpr(!std::meta::is_reference_type(element_type_info)){
+                    constexpr auto original_name = std::meta::identifier_of(item);
+                    
+                    std::string_view name = original_name;
+                    using ValueType = [: std::meta::type_of(item) :];
+
+                    constexpr static auto child_annotations = std::define_static_array(
+                        std::meta::annotations_of(item)
+                    );
+                    constexpr static auto array_annotations = detail::ranges_to_array<std::meta::info,child_annotations.size()>(
                         child_annotations
+                    );
+
+                    // 对于需要skip的直接进行skip
+                    if constexpr(
+                        !has_annotation_with_trait<attr::AttributeTraits::SchemaSkip,array_annotations.size(),array_annotations>() &&
+                        !has_annotation_with_trait<attr::AttributeTraits::GeneralSkip,array_annotations.size(),array_annotations>()
                     ){
-                        constexpr auto anno_type_info = std::meta::type_of(anno);
-                        using AnnotationType = [: anno_type_info :];
-                        using AnnotationBaseType = std::decay_t<AnnotationType>;                
-                        
-                        if constexpr(requires{
-                            AnnotationBaseType::attribute_trait;
-                        }){
-                            constexpr static auto value_mapping = [: std::meta::constant_of(anno) :];
-                        
-                            if constexpr(AnnotationBaseType::attribute_trait == attr::AttributeTraits::Rename){
-                                if(value_mapping.new_name != nullptr){
-                                    name = value_mapping.new_name;
+                        // 检测annotation
+                        template for(
+                            constexpr auto anno
+                            :
+                            child_annotations
+                        ){
+                            constexpr auto anno_type_info = std::meta::type_of(anno);
+                            using AnnotationType = [: anno_type_info :];
+                            using AnnotationBaseType = std::decay_t<AnnotationType>;                
+                            
+                            if constexpr(requires{
+                                AnnotationBaseType::attribute_trait;
+                            }){
+                                constexpr static auto value_mapping = [: std::meta::constant_of(anno) :];
+                            
+                                if constexpr(AnnotationBaseType::attribute_trait == attr::AttributeTraits::Rename){
+                                    name = value_mapping.new_name();
                                 }
                             }
                         }
-                    }
 
-                    root[name] = std::move(
-                        _generate_schema<ValueType,array_annotations.size(),array_annotations>()
-                    );
+                        root[name] = std::move(
+                            _generate_schema<ValueType,array_annotations.size(),array_annotations>()
+                        );
+                    }
                 }
             }
         }else{
+#ifdef ALIB5_ENABLE_STRICT_REFLECTION
             static_assert(std::meta::is_class_type(^^decayed_T),"Unsupported Structure!");
+#else
+            return root;
+#endif
         }
 
         if(add_constaint){
@@ -147,19 +157,25 @@ namespace alib5::detail {
                         }
                     }else if constexpr(AnnotationBaseType::attribute_trait == attr::AttributeTraits::SchemaValidate){
                         restraint += " VALIDATE ";
-                        restraint += value_mapping.validate_function;
+                        restraint += value_mapping.validate_function();
                     }if constexpr(AnnotationBaseType::attribute_trait == attr::AttributeTraits::ValidateWithArgs){
                         restraint += " VALIDATE ";
-                        restraint += value_mapping.validate_function;
+                        restraint += AnnotationBaseType::validate_function();
 
                         if constexpr(AnnotationBaseType::ArgCount){
                             restraint += " ( ";
 
-                            for(size_t i = 0;i < AnnotationBaseType::ArgCount;++i){
+                            auto append = [&restraint]<detail::fixed_string & S>{
                                 restraint += "\"";
-                                restraint += std::string_view(value_mapping.args[i]);
-                                restraint += "\" ";
-                            }
+                                restraint += S.view();
+                                restraint += "\"";
+                            };
+
+                            [&append]<std::size_t... Is>(std::index_sequence<Is...>){
+                                (... , append.template operator()<
+                                    AnnotationBaseType::template get_arg<Is>()
+                                >() );
+                            }(std::make_index_sequence<AnnotationBaseType::ArgCount>{});
 
                             restraint += " ) ";
                         }
