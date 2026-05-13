@@ -44,6 +44,12 @@ namespace alib5{
             /// 对于类型,默认值就是默认值
             /// 对于数组,默认值是子的默认值
             std::optional<AData> default_value;
+            /// 限定的枚举值
+            std::pmr::unordered_set<
+                std::pmr::string,
+                detail::TransparentStringHash,
+                detail::TransparentStringEqual    
+            > enums;
 
             // validate对性能要求没那么高,选择更加方便的存储方式
             /// 校验子节点,仅作用于Object
@@ -56,7 +62,8 @@ namespace alib5{
             bool override_if_conflict;
             
             Node(std::pmr::memory_resource * __a = std::pmr::get_default_resource())
-            :validates(__a),min_length(__a),max_length(__a),children(__a),array_subs(__a){
+            :validates(__a),min_length(__a),max_length(__a),children(__a),array_subs(__a)
+            ,enums(__a){
                 reset();
             }
 
@@ -70,7 +77,8 @@ namespace alib5{
             ,children(__other.children, __a)
             ,array_subs(__other.array_subs, __a)
             ,is_tuple(__other.is_tuple)
-            ,override_if_conflict(__other.override_if_conflict){
+            ,override_if_conflict(__other.override_if_conflict)
+            ,enums(__other.enums,__a){
                 validates.reserve(__other.validates.size());
                 for(auto & __v : __other.validates) validates.emplace_back(__v, __a);
                 if(__other.default_value) default_value.emplace(*__other.default_value, __a);
@@ -89,7 +97,8 @@ namespace alib5{
             ,children(std::move(__other.children))
             ,array_subs(std::move(__other.array_subs))
             ,is_tuple(__other.is_tuple)
-            ,override_if_conflict(__other.override_if_conflict){}
+            ,override_if_conflict(__other.override_if_conflict)
+            ,enums(__other.enums){}
 
             Node& operator=(Node&&) ALIB5_NOEXCEPT = default;
 
@@ -104,6 +113,7 @@ namespace alib5{
                 array_subs.clear();
                 is_tuple = false;
                 override_if_conflict = false;
+                enums.clear();
             }
 
             /// 显式写出 operator= 避免编译器生成被删除的版本
@@ -119,6 +129,7 @@ namespace alib5{
                 array_subs = other.array_subs;
                 is_tuple = other.is_tuple;
                 override_if_conflict = other.override_if_conflict;
+                enums = other.enums;
                 return *this;
             }
         };

@@ -11,6 +11,7 @@
 #ifndef ALIB5_ADATA_REFLECT_KERNEL
 #define ALIB5_ADATA_REFLECT_KERNEL
 #include <alib5/data/reflect/attributes.h>
+#include <alib5/autil.h>
 #include <meta>
 #include <utility>
 
@@ -130,6 +131,35 @@ namespace alib5{
             return [&]<std::size_t... Is>(std::index_sequence<Is...>){
                 return std::array<T, N>{ std::forward<K>(val)[Is]... };
             }(std::make_index_sequence<N>{});
+        }
+
+        /// 获取一个静态的umap
+        template<class T>
+        requires std::is_enum_v<T>
+        const std::unordered_map<
+            std::string,
+            T,
+            detail::TransparentStringHash,
+            detail::TransparentStringEqual
+        >& get_enum_mapper(){
+            static std::unordered_map<
+                std::string,
+                T,
+                detail::TransparentStringHash,
+                detail::TransparentStringEqual
+            > data;
+            static bool init = [&]{
+                template for(
+                    constexpr auto item :
+                    std::define_static_array(std::meta::enumerators_of(
+                        ^^T
+                    ))
+                ){
+                    data.emplace(std::meta::identifier_of(item),[: item :]);
+                }
+                return true;
+            }();
+            return data;
         }
 
         // 虽然没用上，但还是留着

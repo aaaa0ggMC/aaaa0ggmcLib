@@ -16,6 +16,16 @@ namespace alib5::detail {
         constexpr std::meta::access_context context = std::meta::access_context::unchecked(); 
         
         if constexpr(
+            std::is_enum_v<std::decay_t<InT>>
+        ){
+           auto & mapper = get_enum_mapper<std::decay_t<InT>>();
+
+           if(auto it = mapper.find(root.to<std::string_view>());it != mapper.end()){
+                fill_data = it->second;
+           }else{
+                // 啥都不做现在
+           }
+        }else if constexpr(
             IsNodeValue<InT>
         ){
             panic_if(
@@ -123,32 +133,15 @@ namespace alib5::detail {
                         !has_annotation_with_trait<attr::AttributeTraits::GeneralSkip,array_annotations.size(),array_annotations>()
                     ){
                         // 检测annotation
-                        template for(
-                            constexpr auto anno
-                            :
-                            child_annotations
-                        ){
-                            constexpr auto anno_type_info = std::meta::type_of(anno);
-                            using AnnotationType = [: anno_type_info :];
-                            using AnnotationBaseType = std::decay_t<AnnotationType>;                
-
-                            if constexpr(requires{
-                                AnnotationBaseType::attribute_trait;
-                            }){
-                                constexpr static auto value_mapping = [: std::meta::constant_of(anno) :];
-                            
-                                if constexpr(AnnotationBaseType::attribute_trait == attr::AttributeTraits::Rename){
-                                    name = value_mapping.new_name();
-                                }
-                            }
-                        }
+                        constexpr static auto rename_attr = annotation_do_if_trait<attr::AttributeTraits::Rename, array_annotations.size(), array_annotations>();
+                        if constexpr(!not_found_annotation(rename_attr)) name = rename_attr.new_name();
 
                         if constexpr(cfg.debug){
                             if(debug_logger) [[likely]] {
-                                *debug_logger << "Type         : " << std::meta::display_string_of(^^InT) << fls;
-                                *debug_logger << "OriginalName : " << original_name << fls;
-                                *debug_logger << "MappingName  : " << name << "\n" << fls;
-                                *debug_logger << "ExistInData  : " << root.object().contains(name) << "\n" << fls;
+                                *debug_logger << "Type         : " << std::meta::display_string_of(^^InT) << fls
+                                              << "OriginalName : " << original_name << fls
+                                              << "MappingName  : " << name << "\n" << fls
+                                              << "ExistInData  : " << root.object().contains(name) << "\n" << fls;
                             }
                         }
 

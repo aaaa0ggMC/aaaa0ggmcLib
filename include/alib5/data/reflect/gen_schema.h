@@ -14,6 +14,24 @@ namespace alib5::detail {
         bool add_constaint = true;
 
         if constexpr(
+            std::is_enum_v<std::decay_t<T>>
+        ){
+            root[0] = "TYPE STRING ENUM ( ";
+
+            auto & val = root[0].value().transform<std::string_view>();
+            template for(
+                constexpr auto item :
+                std::define_static_array(std::meta::enumerators_of(
+                    ^^std::decay_t<T>
+                ))
+            ){
+                val += "\"";
+                val += std::meta::identifier_of(item);
+                val += "\" ";
+            }
+
+            val += ") ";
+        }else if constexpr(
             std::is_integral_v<std::decay_t<T>>
         ){
             root[0] = "TYPE INT";
@@ -94,25 +112,8 @@ namespace alib5::detail {
                         !has_annotation_with_trait<attr::AttributeTraits::GeneralSkip,array_annotations.size(),array_annotations>()
                     ){
                         // 检测annotation
-                        template for(
-                            constexpr auto anno
-                            :
-                            child_annotations
-                        ){
-                            constexpr auto anno_type_info = std::meta::type_of(anno);
-                            using AnnotationType = [: anno_type_info :];
-                            using AnnotationBaseType = std::decay_t<AnnotationType>;                
-                            
-                            if constexpr(requires{
-                                AnnotationBaseType::attribute_trait;
-                            }){
-                                constexpr static auto value_mapping = [: std::meta::constant_of(anno) :];
-                            
-                                if constexpr(AnnotationBaseType::attribute_trait == attr::AttributeTraits::Rename){
-                                    name = value_mapping.new_name();
-                                }
-                            }
-                        }
+                        constexpr static auto rename_attr = annotation_do_if_trait<attr::AttributeTraits::Rename, array_annotations.size(), array_annotations>();
+                        if constexpr(!not_found_annotation(rename_attr)) name = rename_attr.new_name();
 
                         root[name] = std::move(
                             _generate_schema<ValueType,array_annotations.size(),array_annotations>()

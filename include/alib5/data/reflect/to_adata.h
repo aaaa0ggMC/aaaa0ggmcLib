@@ -132,120 +132,60 @@ namespace alib5::detail {
                         !has_annotation_with_trait<attr::AttributeTraits::GeneralSkip,array_annotations.size(),array_annotations>()
                     ){
                         // 检测annotation
-                        template for(
-                            constexpr auto anno
-                            :
-                            child_annotations
-                        ){
-                            constexpr auto anno_type_info = std::meta::type_of(anno);
-                            using AnnotationType = [: anno_type_info :];
-                            using AnnotationBaseType = std::decay_t<AnnotationType>;
-                            
-                            if constexpr(requires{
-                                AnnotationBaseType::attribute_trait;
-                            }){
-                                constexpr static auto value_mapping = [: std::meta::constant_of(anno) :];
-                            
-                                if constexpr(AnnotationBaseType::attribute_trait == attr::AttributeTraits::Rename){
-                                    name = value_mapping.new_name();
-                                }
-                            }
-                        }
+                        constexpr static auto rename_attr = annotation_do_if_trait<attr::AttributeTraits::Rename, array_annotations.size(), array_annotations>();
+                        if constexpr(!not_found_annotation(rename_attr)) name = rename_attr.new_name();
 
-                        constexpr bool need_omit = 
-                            has_annotation_with_trait<
-                                attr::AttributeTraits::OmitEmpty,
-                                array_annotations.size(),
-                                array_annotations
-                            >();
+                        constexpr bool need_omit = has_annotation_with_trait<attr::AttributeTraits::OmitEmpty, array_annotations.size(), array_annotations>();
 
                         // 如果能cast就先cast
-                        if constexpr(
-                            requires{
-                                root[name] = std::forward<InT>(base).[: item :];
-                            }
-                        ){
+                        if constexpr(requires{ root[name] = std::forward<InT>(base).[: item :]; }){
                             auto & node = root[name];
-
                             node = std::forward<InT>(base).[: item :];               
                             
                             if constexpr(cfg.debug){
                                 if(debug_logger) [[likely]] {
-                                    *debug_logger << "Type         : " << std::meta::display_string_of(^^InT) << fls;
-                                    *debug_logger << "OriginalName : " << original_name << fls;
-                                    *debug_logger << "MappingName  : " << name << fls;
-                                    *debug_logger << "Value        : " << node.to<std::string_view>() << fls;
-                                    *debug_logger << "OmitEmpty    : " << need_omit << fls;
+                                    *debug_logger << "Type         : " << std::meta::display_string_of(^^InT) << fls
+                                                  << "OriginalName : " << original_name << fls
+                                                  << "MappingName  : " << name << fls
+                                                  << "Value        : " << node.to<std::string_view>() << fls
+                                                  << "OmitEmpty    : " << need_omit << fls;
                                 }
                             }
 
                             bool omitted = false;
-                            if constexpr(
-                                need_omit
-                            ){
-                                // 因为我不知道数据格式化进去后是啥玩意儿。。。。
-                                // 虽然是基础数据，但是还是需要额外的步骤
-                                if(
-                                    node.is_value() &&
-                                    node.value().get_type() == Value::Type::STRING &&
-                                    node.to<std::string_view>() == ""
-                                ){
+                            if constexpr(need_omit){
+                                // 因为我不知道数据格式化进去后是啥玩意儿。。。。 虽然是基础数据，但是还是需要额外的步骤
+                                if(node.is_value() && node.value().get_type() == Value::Type::STRING && node.to<std::string_view>() == ""){
                                     root.object().remove(name);
                                     omitted = true;
-                                    // 这后面node1就失效了
                                 }
                             }
 
                             if constexpr(cfg.debug){
-                                if(debug_logger) [[likely]] {
-                                    *debug_logger << "Omitted      : " << omitted << "\n" << fls;
-                                }
+                                if(debug_logger) [[likely]] *debug_logger << "Omitted      : " << omitted << "\n" << fls;
                             }
                         }else{
                             bool cond = true;
                             auto & target = base.[: item :];
 
-                            if constexpr(
-                                detail::target_is_array< ^^target >() &&
-                                need_omit
-                            ){
-                                if(!std::forward<InT>(base).[: item :].size()){
-                                    cond = false;
-                                }
+                            if constexpr(detail::target_is_array< ^^target >() && need_omit){
+                                if(!std::forward<InT>(base).[: item :].size()) cond = false;
                             }
 
                             if constexpr(cfg.debug){
                                 if(debug_logger) [[likely]] {
-                                    *debug_logger << "Type         : " << std::meta::display_string_of(^^InT) << fls;
-                                    *debug_logger << "OriginalName : " << original_name << fls;
-                                    *debug_logger << "MappingName  : " << name << fls;
-                                    *debug_logger << "OmitEmpty    : " << need_omit << fls;
+                                    *debug_logger << "Type         : " << std::meta::display_string_of(^^InT) << fls
+                                                  << "OriginalName : " << original_name << fls
+                                                  << "MappingName  : " << name << fls
+                                                  << "OmitEmpty    : " << need_omit << fls;
                                 }
                             }
 
                             if(cond){
-                                root[name] = std::move(
-                                    _to_adata<
-                                        cfg,
-                                        child_annotations.size(),
-                                        array_annotations
-                                    >(
-                                        std::forward<InT>(base).[: item :],
-                                        debug_logger
-                                    )
-                                );
-
-                                if constexpr(cfg.debug){
-                                    if(debug_logger) [[likely]] {
-                                        *debug_logger << "Omitted      : " << true << "\n" << fls;
-                                    }
-                                }
+                                root[name] = std::move(_to_adata<cfg, child_annotations.size(), array_annotations>(std::forward<InT>(base).[: item :], debug_logger));
+                                if constexpr(cfg.debug) if(debug_logger) [[likely]] *debug_logger << "Omitted      : " << true << "\n" << fls;
                             }else{
-                                if constexpr(cfg.debug){
-                                    if(debug_logger) [[likely]] {
-                                        *debug_logger << "Omitted      : " << false << "\n" << fls;
-                                    }
-                                }
+                                if constexpr(cfg.debug) if(debug_logger) [[likely]] *debug_logger << "Omitted      : " << false << "\n" << fls;
                             }
                         }
                     }

@@ -158,6 +158,18 @@ bool ALIB5_API Validator::validate(AData & doc,Result & result){
         }
         // 验证长度
         if(!d->is_null() && (!d->is_value() || d->value().get_type() == Value::STRING)){
+            // 先验证枚举
+            if(n->enums.size() && n->enums.find(d->to<std::string_view>()) == n->enums.end()){
+                if(result.enable_string_errors)result.record_error(
+                    "{} : Expected enum {},got {}",
+                    get_vitree(),
+                    n->enums,
+                    d->to<std::string_view>()
+                );
+                success = false;
+                continue;
+            }
+
             // 这里就是数组/对象长度了
             bool has_min = n->min_length.to<std::string_view>() != "";
             bool has_max = n->max_length.to<std::string_view>() != "";
@@ -343,6 +355,22 @@ std::pmr::string Validator::from_adata(const AData & doc){
 
     Parser parser;
     std::string bg_parse;
+
+    auto enum_restrict = [&](std::string_view visit_tree){
+        if(restriction.type_restrict == restriction.RNone ||
+            restriction.type_restrict == restriction.RValue
+        ){
+            restriction.type_restrict = restriction.RString;
+        }else if(restriction.type_restrict != restriction.RString){
+            std::format_to(std::back_inserter(errors),
+                "Only StringType is allowed for an enum. VISIT_TREE \"{}\" \n",
+                visit_tree
+            );
+            return false;
+        }
+        return true;
+    };
+
     auto parse_restriction = [&](std::string_view str,std::string_view visit_tree)->bool{
         parser.parse(str);
         // 重新设置默认值
@@ -398,6 +426,10 @@ std::pmr::string Validator::from_adata(const AData & doc){
                     );
                     return false;
                 }
+
+                if(restriction.enums.size()){
+                    if(!enum_restrict(visit_tree))return false;
+                }
             }else if(bg_parse == "VALIDATE"){
                 auto v = cursor.next();
                 if(!v){
@@ -426,6 +458,35 @@ std::pmr::string Validator::from_adata(const AData & doc){
                         );
                         return false;
                     }
+                }
+            }else if(bg_parse == "ENUM"){
+                if(!enum_restrict(visit_tree))return false;
+
+                if(cursor.peek().view() == lb){
+                    auto v = cursor.next();
+
+                    while(!cursor.reached_end()){
+                        v = cursor.next();
+                        if(v.view() == rb)break;
+
+                        restriction.enums.emplace(
+                            v.view()
+                        );
+                    }
+
+                    if(v.view() != rb){
+                        std::format_to(std::back_inserter(errors),
+                            "Unclosed args when parsing ENUM VISIT_TREE:{} \n",
+                            visit_tree
+                        );
+                        return false;
+                    }
+                }else{
+                    std::format_to(std::back_inserter(errors),
+                        "The syntax of ENUM is : ENUM ( ARGS... )  Example: ENUM (Red Green \"Light Greeb\" )  VISIT_TREE \"{}\" \n",
+                        visit_tree
+                    );
+                    return false;
                 }
             }else if(bg_parse == "MIN" || bg_parse == "MAX"){
                 dvalue_t * op = nullptr;
@@ -532,20 +593,37 @@ std::pmr::string Validator::from_adata(const AData & doc){
                             "First restraint should be value when parsing array! VISIT_TREE {} \n",
                             visit_tree
                         );
+                        continue;
                     }
                     // std::cout << "PARSING RESTR FOR LIST " << std::endl;
-                    bool val1_parse = parse_restriction(val[1 - vi_offset].to<std::string>(),visit_tree);
+                    if(!parse_restriction(val[1 - vi_offset].to<std::string>(),visit_tree)) continue;
+                    
                     *current = restriction;
                     /// 值区间 || 对象,第二个参数是默认值
                     if(val.size() >= 3 - vi_offset){
                         if(current->type_restrict != Node::RArray){
-                            if(simp_validate_type(val[2 - vi_offset],*current).first)current->default_value = val[2 - vi_offset];
-                            else{
+                            // 检测默认值是否匹配了schema设置
+                            if(simp_validate_type(val[2 - vi_offset],*current).first){
+                                if(current->enums.size() && 
+                                    current->enums.find(
+                                        val[2-vi_offset].to<std::string_view>()
+                                    ) == current->enums.end()
+                                ){
+                                    std::format_to(std::back_inserter(errors),
+                                        "Default value \"{}\" doesnt match the enum restriction \"{}\" VISIT_TREE {} \n",
+                                        val[2-vi_offset].to<std::string_view>(),
+                                        current->enums,
+                                        visit_tree
+                                    );
+                                    continue;
+                                }else current->default_value = val[2 - vi_offset];
+                            }else{
                                 std::format_to(std::back_inserter(errors),
-                                    "Default value doesnt match the restriction \"{}\" VISIT_TREE {} \n",
+                                    "Default value doesnt match the type restriction \"{}\" VISIT_TREE {} \n",
                                     node_type_str(current->type_restrict),
                                     visit_tree
                                 );
+                                continue;
                             }
                         }else{ // Array递归描述
                             auto next_vi = visit_tree;
