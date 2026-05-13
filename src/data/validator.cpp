@@ -161,7 +161,7 @@ bool ALIB5_API Validator::validate(AData & doc,Result & result){
             // 先验证枚举
             if(n->enums.size() && n->enums.find(d->to<std::string_view>()) == n->enums.end()){
                 if(result.enable_string_errors)result.record_error(
-                    "{} : Expected enum {},got {}",
+                    "{} : Expected enum {},got \"{}\"",
                     get_vitree(),
                     n->enums,
                     d->to<std::string_view>()

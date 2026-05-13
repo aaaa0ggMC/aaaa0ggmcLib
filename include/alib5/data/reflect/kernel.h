@@ -162,6 +162,31 @@ namespace alib5{
             return data;
         }
 
+        /// 反着看
+        template<class T>
+        requires std::is_enum_v<T>
+        const std::unordered_map<
+            T,
+            std::string
+        >& get_enum_string_mapper(){
+            static std::unordered_map<
+                T,
+                std::string
+            > data;
+            static bool init = [&]{
+                template for(
+                    constexpr auto item :
+                    std::define_static_array(std::meta::enumerators_of(
+                        ^^T
+                    ))
+                ){
+                    data.emplace([: item :],std::meta::identifier_of(item));
+                }
+                return true;
+            }();
+            return data;
+        }
+
         // 虽然没用上，但还是留着
         /// 检查annotation列表中是否存在特定的类型
         template<

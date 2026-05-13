@@ -26,7 +26,17 @@ namespace alib5::detail {
             return std::meta::is_class_type(info);
         };
 
-        if constexpr( target_is_direct() ){
+        if constexpr(
+            std::is_enum_v<std::decay_t<T>>
+        ){
+            auto & mapper = get_enum_string_mapper<std::decay_t<T>>();
+
+            if(auto it = mapper.find(base);it != mapper.end()){
+                root = it->second;
+            }else{
+                // 依旧啥都不干
+            }
+        }else if constexpr( target_is_direct() ){
             root = std::forward<InT>(base);
 
             if constexpr(cfg.debug){
