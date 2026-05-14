@@ -184,6 +184,13 @@ namespace alib5::detail {
                         root[1] = std::move(
                             _to_adata(value_mapping.value)
                         );
+                    }else if constexpr(AnnotationBaseType::attribute_trait == attr::AttributeTraits::OverrideIfConflict){
+                        restraint += " OVERRIDE_CONFLICT";
+                    }else if constexpr(AnnotationBaseType::attribute_trait == attr::AttributeTraits::Optional){
+                        restraint += " OPTIONAL";
+                    }else if constexpr(AnnotationBaseType::attribute_trait == attr::AttributeTraits::Extra){
+                        restraint += " ";
+                        restraint += AnnotationBaseType::extra_restraints();
                     }
                 }
             }

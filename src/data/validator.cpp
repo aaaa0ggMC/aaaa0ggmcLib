@@ -188,21 +188,15 @@ bool ALIB5_API Validator::validate(AData & doc,Result & result){
                 if((min_l >= 0 && sz < min_l) ||
                 (max_l >= 0 && sz > max_l)
                 ){
-                    // 这里还有array的默认值填充呢
-                    if(d->is_array() && sz < min_l){
-                        d->array().ensure(min_l);
-                        // std::cout << "RESIZED " << min_l << std::endl;
-                    }else{
-                        if(result.enable_string_errors)result.record_error(
-                            "{} : Expected target size [{},{}],got {}",
-                            get_vitree(),
-                            (min_l>=0) ? n->min_length.to<std::string>() : "0",
-                            (max_l>=0) ? n->max_length.to<std::string>() : "+inf",
-                            sz
-                        );
-                        success = false;
-                        continue;
-                    }
+                    if(result.enable_string_errors)result.record_error(
+                        "{} : Expected target size [{},{}],got {}",
+                        get_vitree(),
+                        (min_l>=0) ? n->min_length.to<std::string>() : "0",
+                        (max_l>=0) ? n->max_length.to<std::string>() : "+inf",
+                        sz
+                    );
+                    success = false;
+                    continue;
                 }
             }
         }else if(d->is_value()){
@@ -228,6 +222,9 @@ bool ALIB5_API Validator::validate(AData & doc,Result & result){
                     continue;
                 }
             }
+        }else if(d->is_object()){
+            // 这里校验的就是长度了
+            // ..
         }else{
             // 都是null了,后面的内容我觉得没必要校验了...
             continue;
@@ -657,7 +654,33 @@ std::pmr::string Validator::from_adata(const AData & doc){
             case dtype_t::TObject:
                 // 这里理论上要加入对子类的验证,但是需要等等我
                 current->type_restrict = Node::RObject;
-                for(auto proxy : d->object()){
+                auto & obj = d->object();
+
+                auto magic_schema = obj.find(magic_key_for_schema_restr);
+                if(magic_schema != obj.end()){
+                    if(magic_schema.second().get_type() != AData::TValue){
+                        std::format_to(std::back_inserter(errors),
+                            "Only string is allowed for object description! VISIT_TREE {} \n",
+                            visit_tree
+                        );
+                        continue;
+                    }
+                    if(!parse_restriction(magic_schema.second().to<std::string>(), visit_tree))continue;
+                }
+
+                /// 检查前后类型是否不一致
+                if(current->type_restrict != Node::RObject){
+                    std::format_to(std::back_inserter(errors),
+                        "Object cannot be restrained to a non-object type! \"{}\" VISIT_TREE {} \n",
+                        node_type_str(current->type_restrict),
+                        visit_tree
+                    );
+                    continue;
+                }
+
+                for(auto proxy : obj){
+                    if(proxy.first() == magic_key_for_schema_restr)continue;
+
                     auto next_vi = visit_tree;
                     next_vi += ".";
                     next_vi += proxy.first();

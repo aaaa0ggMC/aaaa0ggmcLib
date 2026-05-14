@@ -96,7 +96,10 @@ namespace alib5{
             OmitEmpty,
             SeriSkip,
             DeseriSkip,
-            GeneralSkip
+            GeneralSkip,
+            OverrideIfConflict,
+            Optional,
+            Extra,
         };
 
 /// MultiUse (Serialize[S],Deserialize[D] & Schema[Sc]) ////
@@ -133,11 +136,11 @@ namespace alib5{
             }
         };
 
-        /// 通用skip
+        /// [SDSc] 通用skip
         struct skip{
             constexpr static AttributeTraits attribute_trait = AttributeTraits::GeneralSkip;
         };
-        
+
 //// Deserialize Only ///
 namespace deseri{
         /// 反序列化直接跳过这个
@@ -165,6 +168,29 @@ namespace seri{
 }
 //// Schema Only ////
 namespace schema{
+        /// 标注这是optional的
+        struct optional{
+            constexpr static AttributeTraits attribute_trait = AttributeTraits::Optional;
+        };
+
+
+        /// 额外规则
+        template<detail::fixed_string S>
+        struct extra{
+            constexpr static AttributeTraits attribute_trait = AttributeTraits::Extra;
+        
+            constexpr static std::string_view extra_restraints() {
+                return S.view();
+            }
+        };
+        
+
+        /// 如果数据类型冲突，range冲突......忽略然后覆盖为默认值
+        /// 要求默认值存在
+        struct fallback{
+            constexpr static AttributeTraits attribute_trait = AttributeTraits::OverrideIfConflict;
+        };
+
         /// 用在schema里面阻止对这个进行schema生成
         struct skip {
             constexpr static AttributeTraits attribute_trait = AttributeTraits::SchemaSkip;

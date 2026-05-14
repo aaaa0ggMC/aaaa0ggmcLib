@@ -4,6 +4,8 @@
 #include <alib5/aparser.h>
 
 namespace alib5{
+    /// 在schema里面约束object的magic key
+    constexpr std::string_view magic_key_for_schema_restr = "[ALIB5_OBJ_SCHEMA]";
 
     /// 校验器
     struct ALIB5_API Validator{
