@@ -58,7 +58,8 @@ static std::string_view node_type_str(Validator::Node::TypeRestrict t){
         default:            return "Unknown";
     }
 }
-bool ALIB5_API Validator::validate(AData & doc,Result & result){
+
+bool ALIB5_API Validator::validate(AData & doc,Result & result,bool ignore_missing){
     // 注意,对于数组以及Object处理都要格外小心,因为都是线性存储,小心引用失效!
     // 好在DFS只会影响最深一层的引用
     // 因此安全系数也不是那么差
@@ -307,7 +308,7 @@ bool ALIB5_API Validator::validate(AData & doc,Result & result){
                         // 因为上面的旧的it不支持copy operator
                         auto it = obj.find(k);
                         object_next.emplace_back(it.it->second,k,&v);
-                    }else if(v.required){
+                    }else if(v.required && !ignore_missing){
                         if(result.enable_string_errors)result.record_error(
                             "{} : Required child {},but missing",
                             get_vitree(),
@@ -653,7 +654,6 @@ std::pmr::string Validator::from_adata(const AData & doc){
             }
             case dtype_t::TObject:
                 // 这里理论上要加入对子类的验证,但是需要等等我
-                current->type_restrict = Node::RObject;
                 auto & obj = d->object();
 
                 auto magic_schema = obj.find(magic_key_for_schema_restr);
@@ -666,10 +666,16 @@ std::pmr::string Validator::from_adata(const AData & doc){
                         continue;
                     }
                     if(!parse_restriction(magic_schema.second().to<std::string>(), visit_tree))continue;
+                    // 由于前面没有需要合并的地方，因此使用这个restriction
+                    *current = restriction;
+
+                    // std::cout << "parsing" << magic_schema.second().to<std::string>() << "\nparsed:" << current->max_length.to<std::string_view>() << std::endl;
                 }
 
                 /// 检查前后类型是否不一致
-                if(current->type_restrict != Node::RObject){
+                if(current->type_restrict == Node::RNone){
+                    current->type_restrict = Node::RObject;
+                }else if(current->type_restrict != Node::RObject){
                     std::format_to(std::back_inserter(errors),
                         "Object cannot be restrained to a non-object type! \"{}\" VISIT_TREE {} \n",
                         node_type_str(current->type_restrict),

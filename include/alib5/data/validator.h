@@ -5,7 +5,7 @@
 
 namespace alib5{
     /// 在schema里面约束object的magic key
-    constexpr std::string_view magic_key_for_schema_restr = "[ALIB5_OBJ_SCHEMA]";
+    constexpr std::string_view magic_key_for_schema_restr = "[ALIB5_OBJ]";
 
     /// 校验器
     struct ALIB5_API Validator{
@@ -209,12 +209,13 @@ namespace alib5{
         std::pmr::string ALIB5_API from_adata(const AData & doc);
         
         /// 进行校验,returns false if fails
-        bool ALIB5_API validate(AData & doc,Result & result);
+        /// ignore_mussing 适用于C++类校验，从而不需要重新写类&映射，利用了C++构造函数默认值逻辑
+        bool ALIB5_API validate(AData & doc,Result & result,bool ignore_missing = false);
 
         /// 简单包装,returns false if fails
-        inline Result validate(AData & doc){
+        inline Result validate(AData & doc,bool ignore_missing = false){
             Result r;
-            validate(doc,r);
+            validate(doc,r,ignore_missing);
             return r;
         } 
     };

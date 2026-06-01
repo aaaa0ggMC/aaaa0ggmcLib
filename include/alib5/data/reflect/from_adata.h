@@ -50,6 +50,7 @@ namespace alib5::detail {
             &&
 
             requires(typename InT::value_type & val){
+                fill_data.clear();
                 fill_data.push_back(val);
                 { fill_data.back() } -> std::convertible_to<typename InT::value_type &>;
                 }
@@ -76,6 +77,7 @@ namespace alib5::detail {
                 }
             }
 
+            fill_data.clear();
             for(size_t i = 0;i < arr.size();++i){
                 fill_data.push_back(
                     ValueType()

@@ -3,7 +3,7 @@
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief 这里列出了entity_manager支持的所有注入方式，主要为文档说明
  * @version 0.1
- * @date 2026/02/28
+ * @date 2026/06/01
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
@@ -22,7 +22,7 @@ namespace alib5::ecs{
     /// @brief 可以通过继承这个基类来方便地表示你需要cleanup
     /// @note  由于并不需要转换成基类来访问，因此其实没有vtable开销
     struct INeedCleanup{
-        virtual void cleanup() = 0;
+        // void cleanup();
     };
 
     /// 添加component的时候要是不存在空的槽位会执行构造函数，参数传递
@@ -35,7 +35,7 @@ namespace alib5::ecs{
         requires(T&t,Args&&... args){t.reset(std::forward<Args>(args)...);};
     /// @brief 可以通过继承这个类来表示你需要reset，但是这个的继承只有空参列表的，用处不大  
     struct INeedReset{
-        virtual void reset() = 0;
+        // void reset();
     };
 
     /// LinearStorage删除元素后立马执行的操作
@@ -45,7 +45,7 @@ namespace alib5::ecs{
         requires(T&t){t.d_cleanup();};
     /// @brief 可以通过继承这个类来表示你需要d_cleanup，但是这个的继承只有空参列表的，用处不大  
     struct INeedDataCleanup{
-        virtual void d_cleanup() = 0;
+        // void d_cleanup();
     };
 
     /// 如果你希望在System中能够访问到组件目前绑定的entity，可以使用下面的注入方式

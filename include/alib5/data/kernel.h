@@ -769,6 +769,15 @@ namespace alib5{
         }
     };
 
+    /// 快速生成支持
+    template<class Dumper = data::JSON>
+    inline AData adata_from_memory(std::string_view mem,std::pmr::memory_resource * __a = ALIB5_DEFAULT_MEMORY_RESOURCE){
+        AData data(__a);
+        data.load_from_memory<Dumper>(mem);
+        return data;
+    }
+
+
     using dvalue_t = Value;
     using dadata_t = AData;
     using dobject_t = AData::Object;
