@@ -32,6 +32,10 @@ namespace alib5::detail {
 
             val += ") ";
         }else if constexpr(
+            std::is_same_v<std::decay_t<T>,bool>
+        ){
+            root[0] = "TYPE BOOL";
+        }else if constexpr(
             std::is_integral_v<std::decay_t<T>>
         ){
             root[0] = "TYPE INT";
@@ -39,10 +43,6 @@ namespace alib5::detail {
             std::is_floating_point_v<std::decay_t<T>>
         ){
             root[0] = "TYPE DOUBLE";
-        }else if constexpr(
-            std::is_same_v<std::decay_t<T>,bool>
-        ){
-            root[0] = "TYPE BOOL";
         }else if constexpr(
             IsStringLike<std::decay_t<T>> || IsStringLike<T>
         ){

@@ -294,29 +294,31 @@ bool ALIB5_API Validator::validate(AData & doc,Result & result,bool ignore_missi
                 auto it = obj.find(k);
                 // std::cout << "SEARCHING " << k << std::endl;
                 if(it == obj.end()){
-                    if(v.default_value){
-                        obj[k] = *v.default_value;
-                        // std::cout << "HAS DEFAULT" << std::endl;
-                        continue;
-                    }else if(v.type_restrict == Node::RArray){
-                        // std::cout << "GENN ARR " << k << std::endl;
-                        obj[k].set<darray_t>();
-                        auto it = obj.find(k);
-                        object_next.emplace_back(it.it->second,k,&v);
-                    }else if(v.type_restrict == Node::RObject){
-                        obj[k].set<dobject_t>();
-                        // 因为上面的旧的it不支持copy operator
-                        auto it = obj.find(k);
-                        object_next.emplace_back(it.it->second,k,&v);
-                    }else if(v.required && !ignore_missing){
-                        if(result.enable_string_errors)result.record_error(
-                            "{} : Required child {},but missing",
-                            get_vitree(),
-                            k
-                        );
-                        fail = true;
-                        success = false;
-                        break;
+                    if(!ignore_missing){
+                        if(v.default_value){
+                            obj[k] = *v.default_value;
+                            // std::cout << "HAS DEFAULT" << std::endl;
+                            continue;
+                        }else if(v.type_restrict == Node::RArray){
+                            // std::cout << "GENN ARR " << k << std::endl;
+                            obj[k].set<darray_t>();
+                            auto it = obj.find(k);
+                            object_next.emplace_back(it.it->second,k,&v);
+                        }else if(v.type_restrict == Node::RObject){
+                            obj[k].set<dobject_t>();
+                            // 因为上面的旧的it不支持copy operator
+                            auto it = obj.find(k);
+                            object_next.emplace_back(it.it->second,k,&v);
+                        }else if(v.required){
+                            if(result.enable_string_errors)result.record_error(
+                                "{} : Required child {},but missing",
+                                get_vitree(),
+                                k
+                            );
+                            fail = true;
+                            success = false;
+                            break;
+                        }
                     }
                 }else{
                     // 先不急,这个也要确保引用一致
