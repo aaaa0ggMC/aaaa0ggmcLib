@@ -1,23 +1,25 @@
-/** @file kernel.h
-* @brief 与日志有关的函数库
-* @author aaaa0ggmc
-* @last-date 2025/04/04
-* @date 2026/05/07 
-* @version 5.0
-* @copyright Copyright(C)2025
-********************************
-@par 修改日志:
-<table>
-<tr><th>时间       <th>版本         <th>作者          <th>介绍
-<tr><td>2025-04-04 <td>3.1         <th>aaaa0ggmc    <td>添加doc
-<tr><td>2025-04-04 <td>3.1         <th>aaaa0ggmc    <td>完成doc
-<tr><td>2025-11-10 <td>pre-4.0     <th>aaaa0ggmc    <td>准备4.0阶段
-<tr><td>2025-11-12 <td>alpha-4.0   <th>aaaa0ggmc    <td>4.0阶段核心完工，优化ing...
-<tr><td>2025-11-27 <td>4.0         <th>aaaa0ggmc    <td>进入日常使用&维护阶段
-<tr><td>2026-06-29 <td>5.0         <th>aaaa0ggmc    <td>简单迁移一次
-</table>
-********************************
-*/
+/**
+ * @file kernel.h
+ * @brief Logger core: loggers, log factories, streamed contexts, manipulators, tags, rates and message formatting pipeline.
+ * 与日志有关的函数库
+ * @author aaaa0ggmc
+ * @last-date 2025/04/04
+ * @date 2026/06/18
+ * @version 5.0
+ * @copyright Copyright(C)2025
+ ********************************
+ @par 修改日志:
+ <table>
+ <tr><th>时间       <th>版本         <th>作者          <th>介绍
+ <tr><td>2025-04-04 <td>3.1         <th>aaaa0ggmc    <td>添加doc
+ <tr><td>2025-04-04 <td>3.1         <th>aaaa0ggmc    <td>完成doc
+ <tr><td>2025-11-10 <td>pre-4.0     <th>aaaa0ggmc    <td>准备4.0阶段
+ <tr><td>2025-11-12 <td>alpha-4.0   <th>aaaa0ggmc    <td>4.0阶段核心完工，优化ing...
+ <tr><td>2025-11-27 <td>4.0         <th>aaaa0ggmc    <td>进入日常使用&维护阶段
+ <tr><td>2026-06-29 <td>5.0         <th>aaaa0ggmc    <td>简单迁移一次
+ </table>
+ ********************************
+ */
 /**
  * @todo 实现LogManager对log文件（文件夹）进行管理
  */

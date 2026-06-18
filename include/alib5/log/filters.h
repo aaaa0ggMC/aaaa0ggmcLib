@@ -1,13 +1,13 @@
 /**
  * @file filters.h
+ * @brief Log filtering modules; currently supports level-based filtering (more to come as needs arise). / 过滤日志的模块，目前还没做完（因为还没需求场景），支持日志级别过滤
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
- * @brief 过滤日志的模块，目前还没做完（因为还没需求场景），支持日志级别过滤
  * @version 0.1
- * @date 2026/01/29
- * 
+ * @date 2026/06/18
+ *
  * @copyright Copyright(c)2025 aaaa0ggmc
- * 
- * @start-date 2025/11/27 
+ *
+ * @start-date 2025/11/27
  */
 #ifndef ALOG2_PREFAB_TARGETS
 #define ALOG2_PREFAB_TARGETS
@@ -17,14 +17,27 @@
 
 namespace alib5::lof{
 
+    /**
+     * @brief Filter that delegates keep/drop decisions to a user-supplied predicate on the level id.
+     * @par Original Comment:
+     * (implicit) CustomLevelBlocker
+     */
     struct ALIB5_API CustomLevelBlocker : public LogFilter{
-        /// @brief 用户自定义的判断函数
+        /**
+         * @brief User-supplied predicate type deciding whether a level should be kept.
+         * @par Original Comment:
+         * 用户自定义的判断函数
+         */
         using CustomFN = std::function<bool(int)>;
 
-        /// @brief 用户定义的
+        /// @brief User-supplied predicate. / 用户定义的
         CustomFN should_keep;
 
-        /// @brief 初始化，理论上要求传入的不能为NULL
+        /**
+         * @brief Initializes the blocker; the predicate must not be null in theory.
+         * @par Original Comment:
+         * 初始化，理论上要求传入的不能为NULL
+         */
         CustomLevelBlocker(CustomFN ishould_keep){
             panic_debug(should_keep != nullptr,"The function you passed shouldn't be null!");
             if(ishould_keep)should_keep = ishould_keep;
@@ -35,6 +48,11 @@ namespace alib5::lof{
             }
         }
 
+        /**
+         * @brief Pre-filter: asks the user predicate whether to keep this level.
+         * @par Original Comment:
+         * (implicit) pre_filter
+         */
         inline bool pre_filter(
             int level,
             std::string_view raw_message,

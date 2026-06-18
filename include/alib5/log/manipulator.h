@@ -1,9 +1,9 @@
 /**
  * @file manipulator.h
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
- * @brief 一些基本的操作符
+ * @brief Stream manipulators for the logger: flush, endlog, tag/rate/tfmt injection, formatting control and erase helpers. / 一些基本的操作符
  * @version 0.1
- * @date 2026/05/10
+ * @date 2026/06/18
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 
