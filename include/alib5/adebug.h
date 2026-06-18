@@ -1,9 +1,9 @@
 /**
  * @file adebug.h
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
- * @brief 目标是提供简单可用的错误判断，适合我这种一般不调试的人
+ * @brief Lightweight assertion/panic helpers with optional stack traces for quick error checks. / 目标是提供简单可用的错误判断，适合我这种一般不调试的人
  * @version 5.0
- * @date 2026/05/07
+ * @date 2026/06/18
  * 
  * @copyright Copyright(c)2025 aaaa0ggmc
  * 

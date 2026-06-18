@@ -1,7 +1,7 @@
 /**
  * @file manip_table.h
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
- * @brief 一个简单的表格系统,用于logger显示表格数据,支持多行,颜色,嵌套,对齐等功能
+ * @brief ASCII table manipulator for the logger: multi-line cells, colors, nesting and alignment. / 一个简单的表格系统,用于logger显示表格数据,支持多行,颜色,嵌套,对齐等功能
  * @version 5.0
  * @date 2026-03-20
  * 

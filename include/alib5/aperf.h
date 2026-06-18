@@ -1,13 +1,15 @@
 /**
  * @file aperf.h
- * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
- * @brief 一个简单的性能计算库，能确保数据大致准确，同时省的我每次都要写差不多的benchmark代码
+ * @brief Lightweight benchmark utilities with warm-up, repeat, and statistics (time/CV/stddev). / 简易性能基准工具，提供预热、重复运行与统计（耗时/变异系数/标准差）。
+ * @author aaaa0ggmc
+ * @date 2026/06/18
  * @version 5.0
- * @date 2026/04/13
- * 
- * @copyright Copyright(c)2025 aaaa0ggmc
- * 
- * @start-date 2025/11/08 
+ * @copyright Copyright(c) 2026
+ *
+ * @par Original Comment:
+ * 一个简单的性能计算库，能确保数据大致准确，同时省的我每次都要写差不多的benchmark代码
+ *
+ * @start-date 2025/11/08
  */
 #ifndef ALIB5_APERF
 #define ALIB5_APERF
@@ -22,8 +24,11 @@
 namespace alib5{
 
     /**
-     * @brief 阻止编译器优化掉某个变量。使用GCC/Clang的内联汇编实现，确保在GCC下绝对可用。
-     * 
+     * @brief Force the compiler to materialize @p value, preventing dead-store elimination.
+     *
+     * @par Original Comment:
+     * 阻止编译器优化掉某个变量。使用GCC/Clang的内联汇编实现，确保在GCC下绝对可用。
+     *
      * @tparam T 变量类型
      * @param value 变量引用
      */
@@ -37,7 +42,10 @@ namespace alib5{
     }
 
     /**
-     * @brief 阻止编译器跨越此行进行内存优化（内存屏障）。
+     * @brief Emit a compiler memory barrier preventing reordering of loads/stores across this call.
+     *
+     * @par Original Comment:
+     * 阻止编译器跨越此行进行内存优化（内存屏障）。
      */
     inline __attribute__((always_inline)) void clobber_memory(){
         #if defined(__GNUC__) || defined(__clang__)
@@ -47,19 +55,20 @@ namespace alib5{
         #endif
     }
 
-    /// @brief 进行热身的最低热身时长
+    /// @brief Minimum warm-up duration in milliseconds before measurement begins. 进行热身的最低热身时长
     constexpr uint32_t warm_up_time_ms = 100;
-    
+
+    /// @brief Concept requiring @p T be invocable with no arguments; used to constrain benchmark functions.
     template<class T> concept IsValidBenchmarkFunction = requires(T & t){
         t();
     };
 
-    /// 单次运行结果
+    /// @brief Result of a single benchmark run: total elapsed time and iteration count. 单次运行结果
     struct SingleBenchmarkResult{
-        double timeSum; ///< 单次运行总时间 (ms)
-        uint32_t times; ///< 运行总次数
+        double timeSum; ///< Total elapsed time in milliseconds. 单次运行总时间 (ms)
+        uint32_t times; ///< Number of iterations executed. 运行总次数
 
-        /// 输出为string
+        /// @brief Render the result as a fixed-precision multi-line string. 输出为string
         inline std::string str() const{
             std::stringstream ss;
             ss << std::fixed << std::setprecision(6);
@@ -69,19 +78,22 @@ namespace alib5{
             return ss.str();
         }
 
+        /// @brief Append the string form to a log-like container exposing append().
         template<class Str> inline void write_to_log(Str & s){
             s.append(str());
         }
     };
 
-    /// Repeat结果
+    /// @brief Aggregated result of multiple repeated runs with derived statistics. Repeat结果
     struct BenchmarkResults{
+        /// @brief Human-readable name shown in str(). Name of the benchmark suite.
         std::string m_name;
-        /// 结果列表
+        /// @brief Per-run results. 结果列表
         std::vector<SingleBenchmarkResult> results;
-        /// 除了CV外精度
+        /// @brief Decimal digits used for non-CV fields. 除了CV外精度
         size_t m_precision { 6 };
 
+        /// @brief Cached aggregates computed by calculate(). Aggregated statistics over all runs.
         struct CalculateInfo{
             double sum = 0;
             double shortest_avg = std::numeric_limits<double>::max();
@@ -92,6 +104,7 @@ namespace alib5{
             double cv = 0;
         };
 
+        /// @brief Compute sum, average, shortest/longest per-run averages, stddev, and CV across all runs.
         CalculateInfo calculate() const {
             CalculateInfo c;
             if(results.empty()) return c;
@@ -115,7 +128,7 @@ namespace alib5{
             return c;
         }
 
-        /// 输出为string
+        /// @brief Render the aggregated report (name, totals, average, shortest/longest, stddev, CV%). 输出为string
         inline std::string str() const{
             if(results.empty())return "";
             auto info = calculate();
@@ -145,54 +158,63 @@ namespace alib5{
             return ss.str();
         }
 
+        /// @brief Set the benchmark suite name; returns *this for chaining.
         BenchmarkResults& name(std::string_view name){
             m_name = name; // 这里是和意味?
             return *this;
         }
 
+        /// @brief Set the decimal precision for non-CV fields; returns *this for chaining.
         BenchmarkResults& precision(size_t prec){
             m_precision = prec;
             return *this;
         }
 
+        /// @brief Append the string form to a log-like container exposing append().
         template<class Str> inline void write_to_log(Str & s){
             s.append(str());
         }
     };
 
     // 添加对alogger的流式输出
+    /// @brief Extension namespace bridging benchmark results to the alogger streaming API.
     namespace ext{
+        /// @brief Convert a SingleBenchmarkResult to string for alogger integration.
         template<bool copy = true> inline auto to_string(const SingleBenchmarkResult & r){
             return r.str();
         }
 
+        /// @brief Convert a BenchmarkResults to string for alogger integration.
         template<bool copy = true> inline auto to_string(const BenchmarkResults & r){
             return r.str();
         }
     }
     // 对ostream的流式输出
+    /// @brief Stream a SingleBenchmarkResult to an ostream.
     inline std::ostream& operator<<(std::ostream & os,const SingleBenchmarkResult & val){
         os << val.str();
         return os;
     }
+    /// @brief Stream a BenchmarkResults to an ostream.
     inline std::ostream& operator<<(std::ostream & os,const BenchmarkResults & val){
         os << val.str();
         return os;
     }
 
-    /// 简易的benchmark类
+    /// @brief Reusable benchmark driver that warms up and then repeats a function under measurement. 简易的benchmark类
     template<IsValidBenchmarkFunction Function> struct Benchmark{
+        /// @brief The callable under test.
         Function func;
 
-        // 初始化benchmark函数
+        /// @brief Store the callable to be benchmarked. 初始化benchmark函数
         Benchmark(Function f):func(std::move(f)){}
 
         /**
-         * @brief 运行benchmark
-         * 
+         * @brief Warm up, then run @p repeat batches of @p times iterations and aggregate the results.
+         *
          * @param times 单次运行迭代次数
          * @param repeat 重复运行组数
-         * @return BenchmarkResults 
+         * @return BenchmarkResults
          */
         inline BenchmarkResults run(uint32_t times,uint32_t repeat){
             BenchmarkResults rs;
@@ -224,10 +246,10 @@ namespace alib5{
         }
 
     private:
-        /// 单次运行测试
+        /// @brief Time @p times invocations of func, returning the elapsed time and count. 单次运行测试
         inline SingleBenchmarkResult single_run(uint32_t times){
             SingleBenchmarkResult result = {0, times};
-            
+
             auto st = std::chrono::steady_clock::now();
             for(uint32_t i = 0; i < times; ++i){
                 if constexpr (std::is_void_v<std::invoke_result_t<Function>>) {
@@ -239,7 +261,7 @@ namespace alib5{
                 }
             }
             auto ed = std::chrono::steady_clock::now();
-            
+
             result.timeSum = std::chrono::duration<double, std::milli>(ed - st).count();
             return result;
         }

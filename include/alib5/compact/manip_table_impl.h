@@ -1,3 +1,12 @@
+/**
+ * @file manip_table_impl.h
+ * @brief Template implementation of streamed ASCII table rendering for log_table.
+ * 表格渲染模板实现，将流式上下文中的表格数据渲染为带边框与对齐的 ASCII 表格。
+ * @author aaaa0ggmc
+ * @date 2026/06/18
+ * @version 5.0
+ * @copyright Copyright(c) 2026
+ */
 #ifndef ALIB5_COMPACT_MANIP_TABLE
 #define ALIB5_COMPACT_MANIP_TABLE
 #include <alib5/compact/manip_table.h>
@@ -6,6 +15,28 @@ namespace alib5{
     using namespace detail;
 
     template<class Lg>
+    /**
+     * @brief Render the accumulated table operator data into a bordered, aligned ASCII table.
+     *
+     * Consumes the streamed context's table operator, computes per-column and per-row
+     * dimensions from the gathered items (filling defaults where needed), then emits
+     * top border, aligned cell content with custom tags, mid line separators and
+     * bottom border into the context's cache string.
+     *
+     * @par Original Comment:
+     * 空表返回,这个很重要,后面的代码假设op.data不为空
+     * 这里传入的大小都是逻辑大小,并且假设line_sep等等逻辑大小就是1
+     * 分配大小计算格子
+     * 第一次遍历,获取边界
+     * 当前大小,之后获取大小都是以这个为标准
+     * 生成top_border
+     * 第二次遍历,生成内容
+     * 生成bottom border
+     *
+     * @tparam Lg Logger type carried by the streamed context.
+     * @param ctx Rvalue streamed context holding the table operator and output buffer.
+     * @return The forwarded streamed context (moved) with the rendered table appended.
+     */
     inline StreamedContext<Lg>&& log_table::_self_forward(StreamedContext<Lg> && ctx){
         data_t data(ctx.factory.get_msg_str_alloc());
         Operator op(data);

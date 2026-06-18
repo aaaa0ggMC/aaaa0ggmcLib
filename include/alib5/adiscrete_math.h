@@ -1,7 +1,7 @@
 /**
  * @file adiscrete_math.h
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
- * @brief 只是离散数学编程实践罢了，注意，测评机器似乎为C++14甚至C++11，因此没有string_view
+ * @brief Discrete-math programming helpers (graphs, sets, etc.) constrained to pre-C++17 features for grading machines. / 只是离散数学编程实践罢了，注意，测评机器似乎为C++14甚至C++11，因此没有string_view
  * @version 5.0
  * @date 2026-05-28
  * 

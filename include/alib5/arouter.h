@@ -1,10 +1,12 @@
-/**@file arouter.h
-* @brief 简单的路径分发器
-* @author aaaa0ggmc
-* @date 2026/04/07
-* @version 5.0
-* @copyright Copyright(c) 2026 
-*/
+/**
+ * @file arouter.h
+ * @brief Tree-based path router with full/any match rules, cursor-driven traversal and configurable dispatch results.
+ * 简单的路径分发器
+ * @author aaaa0ggmc
+ * @date 2026/06/18
+ * @version 5.0
+ * @copyright Copyright(c) 2026
+ */
 #ifndef ALIB5_AROUTER
 #define ALIB5_AROUTER
 #include <alib5/aparser.h>

@@ -1,10 +1,12 @@
-/**@file acommand.h
-* @brief 简单的命令行解释器
-* @author aaaa0ggmc
-* @date 2026/04/07
-* @version 5.0
-* @copyright Copyright(c) 2026 
-*/
+/**
+ * @file acommand.h
+ * @brief Tree-routed command-line interpreter with options, toggles, prefixes and help generator.
+ * 简单的命令行解释器
+ * @author aaaa0ggmc
+ * @date 2026/06/18
+ * @version 5.0
+ * @copyright Copyright(c) 2026
+ */
 #ifndef ALIB5_ACOMMAND
 #define ALIB5_ACOMMAND
 #include <alib5/arouter.h>

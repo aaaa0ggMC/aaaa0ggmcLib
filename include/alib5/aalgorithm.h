@@ -1,10 +1,9 @@
 /**
  * @file aalgorithm.h
- * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
- * @brief Algorithm library, providing practical algorithms. / 算法库，提供实用算法
+ * @brief Aggregate header for algorithm utilities (sort and search). / 算法库聚合头，提供排序与查找。
+ * @author aaaa0ggmc
+ * @date 2026/06/18
  * @version 5.0
- * @date 2026/06/10
- * 
  * @copyright Copyright(c) 2026
  */
 

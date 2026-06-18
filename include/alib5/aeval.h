@@ -1,13 +1,10 @@
 /**
- * @file aecs.h
- * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
- * @brief 尝试做简单的数学解释器
+ * @file aeval.h
+ * @brief Simple math expression evaluator. / 尝试做简单的数学解释器
+ * @author aaaa0ggmc
+ * @date 2026/06/18
  * @version 5.0
- * @date 2026/04/07
- * 
- * @copyright Copyright(c)2025 aaaa0ggmc
- * 
- * @start-date 2025/03/05 
+ * @copyright Copyright(c) 2026
  */
 #ifndef ALIB5_AEVAL
 #define ALIB5_AEVAL

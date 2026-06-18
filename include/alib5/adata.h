@@ -1,10 +1,11 @@
-/**@file adata.h
-* @brief 简单的数据结构
-* @author aaaa0ggmc
-* @date 2026/05/13
-* @version 5.0
-* @copyright Copyright(c) 2026 
-*/
+/**
+ * @file adata.h
+ * @brief Aggregator header exposing the data structures, validators, and reflection layer. / 简单的数据结构
+ * @author aaaa0ggmc
+ * @date 2026/06/18
+ * @version 5.0
+ * @copyright Copyright(c) 2026
+ */
 // 核心
 #include <alib5/data/kernel.h>
 // 验证器

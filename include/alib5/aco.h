@@ -1,13 +1,10 @@
 /**
  * @file aco.h
- * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
- * @brief Provides simple coroutine-related support. / 提供简单的和协程相关的支持
+ * @brief Simple coroutine support built on C++23 std::generator. / 提供简单的和协程相关的支持
+ * @author aaaa0ggmc
+ * @date 2026/06/18
  * @version 5.0
- * @date 2026/06/10
- * 
- * @copyright Copyright(c)2025 aaaa0ggmc
- * 
- * @start-date 2025/11/09 
+ * @copyright Copyright(c) 2026
  */
 #ifndef ALIB5_ACO
 #define ALIB5_ACO
@@ -30,7 +27,7 @@ namespace alib5::co {
 
     /**
      * @brief Concept to determine if a type supports the `until()` condition evaluation.
-     * 
+     *
      * @tparam T The type to check.
      */
     template<class T>
@@ -46,7 +43,7 @@ namespace alib5::co {
 
     /**
      * @brief Concept to determine if a type is a valid coroutine Task.
-     * 
+     *
      * @tparam T The type to check.
      */
     template<class T>
@@ -63,14 +60,14 @@ namespace alib5::co {
 
     /**
      * @brief A coroutine task wrapper based on C++23 std::generator.
-     * 
+     *
      * @tparam T The type yielded by the generator.
      */
     template<class T>
     struct Task {
         using gen_t = std::generator<T>;
         using iterator = decltype(std::declval<gen_t>().begin());
-        
+
         gen_t handle;                           ///< The underlying generator handle.
         std::optional<iterator> current;        ///< An optional iterator representing the current position.
         bool inited { false };                  ///< Flag indicating whether the generator has been initialized.
@@ -85,10 +82,10 @@ namespace alib5::co {
 
         /**
          * @brief Move constructor for the Task. Transfers execution state safely.
-         * 
+         *
          * @param other The other Task to move from.
          */
-        Task(Task&& other) ALIB5_NOEXCEPT 
+        Task(Task&& other) ALIB5_NOEXCEPT
             : handle(std::move(other.handle)) {
             panic_if(inited, "Coroutine has inited!");
             panic_if(other.inited, "Other's coroutine has inited!");
@@ -100,7 +97,7 @@ namespace alib5::co {
 
         /**
          * @brief Constructs a task directly from an rvalue generator.
-         * 
+         *
          * @param t The rvalue generator.
          */
         Task(gen_t&& t)
@@ -108,12 +105,12 @@ namespace alib5::co {
 
         /**
          * @brief Constructs a task using a callable (lvalue reference) and its arguments.
-         * 
+         *
          * @tparam Fn Type of the callable.
          * @tparam Args Argument types for the callable.
          */
         template<class Fn, class... Args>
-        requires (!std::is_same_v<std::remove_cvref_t<Fn>, Task> && 
+        requires (!std::is_same_v<std::remove_cvref_t<Fn>, Task> &&
                   std::is_lvalue_reference_v<Fn>)
         Task(Fn&& t, Args&&... args)
             : handle(std::forward<Fn>(t)(std::forward<Args>(args)...)) {}
@@ -122,8 +119,8 @@ namespace alib5::co {
          * @brief Constructs a task using a callable (rvalue) that can decay to a function pointer.
          */
         template<class Fn, class... Args>
-        requires (!std::is_same_v<std::remove_cvref_t<Fn>, Task> && 
-                  !std::is_lvalue_reference_v<Fn> && 
+        requires (!std::is_same_v<std::remove_cvref_t<Fn>, Task> &&
+                  !std::is_lvalue_reference_v<Fn> &&
                   requires(Fn f) { +f; })
         Task(Fn&& t, Args&&... args)
             : handle((+t)(std::forward<Args>(args)...)) {}
@@ -132,14 +129,14 @@ namespace alib5::co {
          * @brief Deleted constructor to prevent capturing dangling references for un-decayable rvalue closures.
          */
         template<class Fn, class... Args>
-        requires (!std::is_same_v<std::remove_cvref_t<Fn>, Task> && 
-                  !std::is_lvalue_reference_v<Fn> && 
+        requires (!std::is_same_v<std::remove_cvref_t<Fn>, Task> &&
+                  !std::is_lvalue_reference_v<Fn> &&
                   !requires(Fn f) { +f; })
         Task(Fn&& t, Args&&... args) = delete("This may cause coroutine break!");
 
         /**
          * @brief Checks if the generator has further elements to yield.
-         * 
+         *
          * @return true If the generator is uninitialized or has not reached the end.
          * @return false If the generator has been exhausted.
          */
@@ -161,7 +158,7 @@ namespace alib5::co {
             }
         }
     };
-    
+
     /**
      * @par Deduction Guides for Generator / 对于generator的推导指南
      */
@@ -176,7 +173,7 @@ namespace alib5::co {
 
     /**
      * @brief A structure that specifies a fallback task when executing combined tasks.
-     * 
+     *
      * @tparam U The inner task type.
      */
     template<class U>
@@ -185,7 +182,7 @@ namespace alib5::co {
 
         /**
          * @brief Constructs an OnErr wrapper handling a fallback task.
-         * 
+         *
          * @tparam T Type that satisfies the Task requirement.
          * @param v The fallback logic.
          */
@@ -224,7 +221,7 @@ namespace alib5::co {
 
         /**
          * @brief Checks if the signal has been fired.
-         * 
+         *
          * @return true If fired.
          * @return false Otherwise.
          */
@@ -238,7 +235,7 @@ namespace alib5::co {
 
         /**
          * @brief Evaluates the condition for the CanUntil concept.
-         * 
+         *
          * @return true If the signal is ready.
          */
         bool until() const ALIB5_NOEXCEPT {
@@ -248,23 +245,23 @@ namespace alib5::co {
 
     /**
      * @brief Synchronization primitive that waits for a collection of operations to complete.
-     * 
+     *
      * @par Recommended usage / 建议使用案例:
      * @code
      * WaitGroup wg;
      * Task task(others);
-     * 
+     *
      * std::cout << "Doing main" << std::endl;
      * std::jthread th([guard = wg.make_guard()]{
      *     std::this_thread::sleep_for(std::chrono::milliseconds(110));
      * });
-     * 
+     *
      * wait_until(task, wg);
      * std::cout << "Main ended" << std::endl;
      * @endcode
-     * 
+     *
      * @par Pitfall / 避坑指南:
-     * If you capture `wg` by reference and create the guard inside the thread like this: 
+     * If you capture `wg` by reference and create the guard inside the thread like this:
      * / 如果是如下这种在线程内创建 guard 的做法：
      * @code
      * std::jthread th([&wg]{
@@ -281,7 +278,7 @@ namespace alib5::co {
         void done() ALIB5_NOEXCEPT { m_count.fetch_sub(1, std::memory_order_acq_rel); }
 
     public:
-        class Guard; 
+        class Guard;
         friend class Guard;
 
         /**
@@ -303,34 +300,34 @@ namespace alib5::co {
 
         /**
          * @brief Creates an RAII guard that increments the wait count upon creation.
-         * 
+         *
          * @return Guard The generated scoped guard.
          */
         [[nodiscard]] Guard make_guard() { return Guard(*this); }
 
         /**
          * @brief Checks if all registered operations have completed.
-         * 
+         *
          * @return true If the internal count is zero or less.
          */
         bool ready() const ALIB5_NOEXCEPT { return m_count.load(std::memory_order_acquire) <= 0; }
 
         /**
          * @brief Implements the requirement for the CanUntil concept.
-         * 
+         *
          * @return true If the WaitGroup is ready.
          */
         bool until() const ALIB5_NOEXCEPT { return ready(); }
 
         /**
          * @brief Resets the WaitGroup state if it has already been signaled.
-         * 
+         *
          * @return true If reset was successful.
          * @return false If the WaitGroup is still pending.
          */
         bool reset() ALIB5_NOEXCEPT {
             if(!ready()) return false;
-            m_count.store(0, std::memory_order_release); 
+            m_count.store(0, std::memory_order_release);
             return true;
         }
     };
@@ -344,12 +341,12 @@ namespace alib5::co {
 
         /**
          * @brief Constructs repetitive work running inside a jthread.
-         * 
+         *
          * @tparam Fn The callable type.
          * @param f The functional object defining the repetitive workload.
          */
         template<class Fn>
-        RepetitiveWork(Fn&& f) 
+        RepetitiveWork(Fn&& f)
             : done(std::make_shared<std::atomic<bool>>(false)) {
             th = std::jthread([fn = std::forward<Fn>(f), d = done](std::stop_token st) {
                 while (!st.stop_requested()) {
@@ -370,7 +367,7 @@ namespace alib5::co {
          * @brief Requests an explicit stop for the threaded execution.
          */
         void cancel() {
-            th.request_stop(); 
+            th.request_stop();
         }
 
         /**
@@ -389,7 +386,7 @@ namespace alib5::co {
 
         /**
          * @brief Spawns threading work via std::async.
-         * 
+         *
          * @tparam Fn Function signature.
          * @param f Function to execute asynchronously.
          */
@@ -416,7 +413,7 @@ namespace alib5::co {
 
     /**
      * @brief Waits collectively across multiple `CanUntil` instances until the first one is resolved.
-     * 
+     *
      * @tparam Vs The condition types participating in the race.
      */
     template<class... Vs>
@@ -428,11 +425,11 @@ namespace alib5::co {
          * @brief Initialize racers.
          */
         Race(Vs&&... races)
-            : values(std::forward<Vs>(races)...) {}        
-    
+            : values(std::forward<Vs>(races)...) {}
+
         /**
          * @brief Continuously checks if any element in the tuple evaluates to true.
-         * 
+         *
          * @return true When the first racer signals completion.
          */
         bool until() {
@@ -456,13 +453,13 @@ namespace alib5::co {
 
     /**
      * @brief Steps a task explicitly until a specific condition resolves.
-     * 
+     *
      * @tparam T The task generator value type.
      * @tparam Until Condition type satisfying the CanUntil concept.
      * @param t The task to advance.
      * @param ut The condition block driving the wait.
      */
-    template<class T, CanUntil Until> 
+    template<class T, CanUntil Until>
     void wait_until(Task<T>& t, Until& ut) {
         while (!ut.until()) {
             panic_if(!t.should_next(), "Task expired!");
@@ -472,7 +469,7 @@ namespace alib5::co {
 
     /**
      * @brief Advances a task until *any* of the conditions resolves to true.
-     * 
+     *
      * @tparam T The task generator value type.
      * @tparam Ts Types evaluating to a CanUntil condition.
      * @param task The base task to execute.
@@ -495,17 +492,17 @@ namespace alib5::co {
 
     /**
      * @brief Combines several tasks into a single aggregate Task that steps all sub-tasks uniformly.
-     * 
+     *
      * @tparam Ts Task types to be combined.
      * @param itasks Variadic arguments comprising individual task objects.
      * @return auto A synthesized Task that drives all sub-tasks concurrently.
      */
-    template<IsTask... Ts> 
+    template<IsTask... Ts>
     auto combine_tasks(Ts&&... itasks) {
         auto nice_forward = []<class T>(T&& t) -> auto {
             return Task(std::forward<T>(t));
         };
-        
+
         return Task([](auto tup) mutable -> std::generator<int> {
             bool failed = true;
             while (true) {
@@ -519,7 +516,7 @@ namespace alib5::co {
                     };
                     (execute(sub_tasks), ...);
                 }, tup);
-                
+
                 panic_if(failed, "All of the tasks are expired!");
                 co_yield 0;
             }
@@ -528,19 +525,19 @@ namespace alib5::co {
 
     /**
      * @brief Combines multiple tasks into a single task but delegates back to a fallback task if primary tasks fail/expire.
-     * 
+     *
      * @tparam L Task type for the fallback process.
      * @tparam Ts The primary task types to be combined.
      * @param fallback Formats the fallback task configured within `OnErr`.
      * @param itasks Variadic arguments mapping the initial workload.
      * @return auto A synthesized Task controlling execution and mapping errors correctly.
      */
-    template<IsTask L, IsTask... Ts> 
+    template<IsTask L, IsTask... Ts>
     auto combine_tasks(OnErr<L> fallback, Ts&&... itasks) {
         auto nice_forward = []<class T>(T&& t) -> auto {
             return Task(std::forward<T>(t));
         };
-        
+
         return Task([fb = std::move(fallback.task)](auto tup) mutable -> std::generator<int> {
             bool failed = true;
             while (true) {
@@ -554,7 +551,7 @@ namespace alib5::co {
                     };
                     (execute(sub_tasks), ...);
                 }, tup);
-                
+
                 if (failed) fb.next();
                 co_yield 0;
             }

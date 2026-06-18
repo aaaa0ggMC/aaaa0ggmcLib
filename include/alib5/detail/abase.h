@@ -1,14 +1,15 @@
-/**@file abase.h
-* @brief 杂七杂八的宏等等
-* @author aaaa0ggmc
-* @date 2026/01/21
-* @version 5.0
-* @copyright Copyright(c) 2026
-*/
+/**
+ * @file abase.h
+ * @brief Platform abstractions and shared macros. / 平台相关的杂七杂八的宏等等
+ * @author aaaa0ggmc
+ * @date 2026/06/18
+ * @version 5.0
+ * @copyright Copyright(c) 2026
+ */
 #ifndef ALIB5_ABASE
 #define ALIB5_ABASE
-/// 平台相关的定义
-#ifdef _WIN32 
+/// @brief Platform-specific definitions. 平台相关的定义
+#ifdef _WIN32
     #include <windows.h>
     #ifndef ALIB5_API
         #ifdef BUILD_DLL
@@ -28,7 +29,7 @@
 
 #endif
 
-/// 颜色相关定义
+/// @brief Console color escape sequence definitions. 颜色相关定义
 #ifndef __ALIB_CONSOLE_COLORS
 #define __ALIB_CONSOLE_COLORS
 //=============== 基础样式 ================
@@ -81,16 +82,18 @@
 #define ACP_BG_LGRAY    "\e[106m"
 #define ACP_BG_LWHITE   "\e[107m"
 
-//256色模式
+/// @brief 256-color foreground escape sequence generator. 256色模式
 #define ACP_FG256(n) "\e[38;5;" #n "m"
+/// @brief 256-color background escape sequence generator.
 #define ACP_BG256(n) "\e[48;5;" #n "m"
 
-//RGB真彩色模式
+/// @brief True-color (RGB) foreground escape sequence generator. RGB真彩色模式
 #define ACP_FGRGB(r,g,b) "\e[38;2;" #r ";" #g ";" #b "m"
+/// @brief True-color (RGB) background escape sequence generator.
 #define ACP_BGRGB(r,g,b) "\e[48;2;" #r ";" #g ";" #b "m"
 #endif
 
-/// 关于路径
+/// @brief Path separator definitions. 关于路径
 #ifdef _WIN32
     #define ALIB_PATH_SEP '\\'
     #define ALIB_PATH_SEPS "\\"

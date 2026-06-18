@@ -1,3 +1,12 @@
+/**
+ * @file make_table.h
+ * @brief Benchmark result table generation helpers. / 基准测试结果表格生成辅助工具。
+ * @author aaaa0ggmc
+ * @date 2026/06/18
+ * @version 5.0
+ * @copyright Copyright(c) 2026
+ */
+
 #ifndef ALIB5_COMPACT_MAKE_TABLE_H
 #define ALIB5_COMPACT_MAKE_TABLE_H
 #include <alib5/compact/manip_table.h>
@@ -7,16 +16,29 @@
 namespace alib5{
     namespace detail{
         namespace compact_mk_table{
+            /// @brief Internal row data assembled from a BenchmarkResults entry for table rendering.
             struct InternalData{
+                /// @brief Decimal precision used for formatting numeric fields.
                 size_t prec;
+                /// @brief Display name of the benchmark case.
                 std::string name;
+                /// @brief Pre-computed statistics (sum, average, stddev, cv, ...).
                 BenchmarkResults::CalculateInfo info;
             };
 
+            /// @brief Elapsed-time value paired with a format string, streamable into a log table.
             struct ElapseTime{
+                /// @brief Raw elapsed value (in seconds).
                 double v;
+                /// @brief std::format-style format string, e.g. "{:.6f}".
                 std::string_view fmt;
 
+                /**
+                 * @brief Forwards this value into a streamed log table context, applying magnitude normalization.
+                 *
+                 * @param s Target streamed context (rvalue).
+                 * @return The forwarded streamed context.
+                 */
                 auto&& self_forward(StreamedContext<detail::LogTableMockFactory> && s){
                     auto p = misc::normalize_elapse(v);
                     std::move(s) << log_tfmt(fmt) << p.first << p.second;
@@ -26,7 +48,19 @@ namespace alib5{
         };
     };
 
-    /// 支持为benchmark make table,内部使用的ForwardFn
+    /**
+     * @brief Builds a log table summarizing multiple BenchmarkResults, with optional row post-processing.
+     *
+     * @par Original Comment:
+     * 支持为benchmark make table,内部使用的ForwardFn
+     *
+     * @tparam Fn Callback type invoked with the built table (defaults to nullptr_t).
+     * @tparam ForwardFn Callback type invoked with internal row data and the table operator.
+     * @param results Vector of benchmark results to render.
+     * @param fn Optional callback receiving the finished table.
+     * @param ifwd Optional callback invoked with (data, op) to inject extra columns/rows.
+     * @return The configured log table.
+     */
     template<class Fn = std::nullptr_t,class ForwardFn = std::nullptr_t>
     inline auto make_table(const std::vector<BenchmarkResults>& results,Fn&& fn = nullptr,ForwardFn && ifwd = nullptr){
         if(results.empty())return log_table([](auto &op){});
@@ -79,12 +113,37 @@ namespace alib5{
         }
         return table;
     }
+
+    /**
+     * @brief Convenience overload that wraps a single BenchmarkResults into a one-element vector and renders it.
+     *
+     * @tparam Fn Callback type invoked with the built table.
+     * @param result Single benchmark result to render.
+     * @param fn Optional callback receiving the finished table.
+     * @return The configured log table.
+     */
     template<class Fn = std::nullptr_t>
     inline auto make_table(const BenchmarkResults& result,Fn&& fn = nullptr){
         std::vector<BenchmarkResults> results = {result};
         return make_table(results,std::forward<Fn>(fn));
     }
-    
+
+    /**
+     * @brief Runs two callables under identical benchmark settings and renders a comparison table.
+     *
+     * @tparam Times Number of iterations per turn.
+     * @tparam Turns Number of turns (each turn runs Times iterations).
+     * @tparam Fn1 Type of the first callable.
+     * @tparam Fn2 Type of the second callable.
+     * @tparam Fn Callback type invoked with the built table.
+     * @param n1 Display name for the first callable.
+     * @param fn1 First callable to benchmark.
+     * @param n2 Display name for the second callable.
+     * @param fn2 Second callable to benchmark.
+     * @param precision Decimal precision for numeric fields.
+     * @param fn Optional callback receiving the finished table.
+     * @return The configured comparison log table.
+     */
     template<size_t Times = 1000,size_t Turns = 100,class Fn1,class Fn2,class Fn = std::nullptr_t>
     inline auto make_table_compare_bench(std::string_view n1,Fn1 && fn1,std::string_view n2,Fn2 && fn2,size_t precision = 6,Fn && fn = nullptr){
         return make_table_compare<Fn>(
@@ -95,6 +154,16 @@ namespace alib5{
         );
     }
 
+    /**
+     * @brief Renders a side-by-side comparison table for two BenchmarkResults, injecting diff rows.
+     *
+     * @tparam Fn Callback type invoked with the built table.
+     * @param a First benchmark result.
+     * @param b Second benchmark result.
+     * @param precision Decimal precision for numeric fields.
+     * @param fn Optional callback receiving the finished table.
+     * @return The configured comparison log table.
+     */
     template<class Fn = std::nullptr_t>
     inline auto make_table_compare(const BenchmarkResults& a,const BenchmarkResults & b,size_t precision = 6,Fn&& fn = nullptr){
         std::vector<BenchmarkResults> results = {a,b};
@@ -103,10 +172,19 @@ namespace alib5{
             auto & a = data[0];
             auto & b = data[1];
             struct Coloring{
+                /// @brief Relative difference value in [..]; sign/color derived from it.
                 float value;
+                /// @brief std::format-style format string for the percentage output.
                 std::string_view fmt;
+                /// @brief If true, inverts the green/red polarity (smaller-is-better semantics).
                 bool reverse = false;
 
+                /**
+                 * @brief Forwards this coloring cell into a streamed log table context.
+                 *
+                 * @param ctx Target streamed context (rvalue).
+                 * @return The forwarded streamed context.
+                 */
                 auto&& self_forward(StreamedContext<detail::LogTableMockFactory> && ctx){
                     log_tag tag = (value > 0)^reverse ? LOG_COLOR1(Green) : LOG_COLOR1(Red);
                     float out = value * 100;
@@ -126,7 +204,7 @@ namespace alib5{
             op[4][3] << Coloring{1 - a.info.shortest_avg / b.info.shortest_avg,fmt};
             op[5][3] << Coloring{1 - a.info.longest_avg / b.info.longest_avg,fmt};
             op[6][3] << "-";
-            op[7][3] << Coloring{1 - a.info.cv / b.info.cv,fmt,true};   
+            op[7][3] << Coloring{1 - a.info.cv / b.info.cv,fmt,true};
         });
     }
 }
