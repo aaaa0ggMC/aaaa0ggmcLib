@@ -239,6 +239,13 @@ bool ALIB5_API Validator::validate(AData & doc,Result & result,bool ignore_missi
                 if(it != validates.end()){
                     if(!it->second(*d,method.args)){
                         fail = true;
+                        if(result.enable_string_errors){
+                            result.record_error(
+                                "{} : Validation({}) failed.",
+                                get_vitree(),
+                                method.method
+                            );
+                        }   
                         break;
                     }
                 }else{
@@ -266,7 +273,7 @@ bool ALIB5_API Validator::validate(AData & doc,Result & result,bool ignore_missi
                         break;
                     }
                     // 如果arr[i]为NULL并且array_subs[i]存在默认值,那么填充
-                    if(arr[i].is_null() && n->default_value){
+                    if(arr[i].is_null() && n->array_subs[i].default_value){
                         arr[i] = *n->array_subs[i].default_value;
                     }else frames.emplace_back(&arr[i],&n->array_subs[i],"",i);
                 }

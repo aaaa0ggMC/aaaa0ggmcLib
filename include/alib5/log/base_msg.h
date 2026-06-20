@@ -3,7 +3,7 @@
  * @brief LogMsg structure carrying one log entry through the pipeline. / 消息的基础架构
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @version 0.1
- * @date 2026/06/18
+ * @date 2026/06/20
  *
  * @copyright Copyright(c)2025 aaaa0ggmc
  *
@@ -23,24 +23,24 @@ namespace alib5{
     private:
         friend class Logger;
         /// @brief Marks whether the message is acceptable; set during the filter stage. / 标识日志是否可用，会在filter阶段标记
-        bool m_nice_one;
+        bool m_nice_one { false };
         /// @brief Marks whether the composed string has already been generated to avoid rework. / 标识当前日志是否已经生成了composed str从而减少构造
-        bool generated;
+        bool generated { false };
     public:
         /// @brief Header string_view pointing into the Logger's header pool; guaranteed not to dangle. / 指向Logger中的header pool,保证不悬垂
-        std::string_view header;
+        std::string_view header { "" };
         /// @brief The main composed body of the log entry. / 最终合成的日志主要部分
         std::pmr::string body;
         /// @brief Per-message config; using a value (not pointer) to avoid dangling-pointer safety issues. / 日志指向的配置，目前觉得使用指针会带来安全风险，因此尝试一下const结构体
         LogMsgConfig cfg;
         /// @brief Severity level of this entry. / 这条日志的级别
-        int level;
+        int level { 0 };
 
         //// 附加生成信息 ////
         /// @brief Thread id. / 线程id
-        uint64_t thread_id;
+        uint64_t thread_id { 0 };
         /// @brief Timestamp captured by the producer. / producer生成的时间戳
-        double timestamp;
+        double timestamp { 0 };
         /// @brief User-defined tags. / 用户自定义的tag
         std::pmr::vector<LogCustomTag> tags;
 

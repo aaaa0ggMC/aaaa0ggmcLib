@@ -206,7 +206,8 @@ namespace alib5::detail {
                             }
                         } else {
                             bool cond = true;
-                            auto & target = base.[: item :];
+                            using Type = decltype(base.[: item :]);
+                            Type target = std::forward<Type>(base.[: item :]);
 
                             if constexpr(detail::target_is_array< ^^target >() && need_omit) {
                                 if(!std::forward<InT>(base).[: item :].size()) cond = false;
@@ -221,7 +222,7 @@ namespace alib5::detail {
                                 }
                             }
 
-                            if(cond) {
+                            if(!cond) {
                                 root[name] = std::move(_to_adata<cfg, child_annotations.size(), array_annotations>(std::forward<InT>(base).[: item :], debug_logger));
                                 if constexpr(cfg.debug) if(debug_logger) [[likely]] *debug_logger << "Omitted      : " << true << "\n" << fls;
                             } else {

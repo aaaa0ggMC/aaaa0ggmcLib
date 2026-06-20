@@ -2,7 +2,7 @@
  * @file make_table.h
  * @brief Benchmark result table generation helpers. / 基准测试结果表格生成辅助工具。
  * @author aaaa0ggmc
- * @date 2026/06/18
+ * @date 2026/06/20
  * @version 5.0
  * @copyright Copyright(c) 2026
  */
@@ -148,7 +148,7 @@ namespace alib5{
     inline auto make_table_compare_bench(std::string_view n1,Fn1 && fn1,std::string_view n2,Fn2 && fn2,size_t precision = 6,Fn && fn = nullptr){
         return make_table_compare<Fn>(
             Benchmark(std::forward<Fn1>(fn1)).run(Times, Turns).name(n1),
-            Benchmark(std::forward<Fn1>(fn1)).run(Times, Turns).name(n2),
+            Benchmark(std::forward<Fn1>(fn2)).run(Times, Turns).name(n2),
             precision,
             std::forward<Fn>(fn)
         );

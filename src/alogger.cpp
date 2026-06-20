@@ -164,21 +164,36 @@ void Logger::setup_consumer_threads(){
 }
 
 void Logger::consumer_func(){
-    // 靠fetch message来填充
-    // 由于这个不是thread_local的，因此能保证资源被正确析构，因此不需要clear
-    std::vector<LogMsg> messages;
+    std::vector<LogMsg> target;
+    // 提前分配好内存，避免锁内分配
+    target.reserve(config.fetch_message_count_max); 
 
     while(true){
-        msg_semaphore.acquire();
-        if(!logger_not_on_destroying){
-            messages.clear();
-            return;
+        {
+            std::unique_lock<std::mutex> lock(msg_lock);
+            cv.wait(lock, [this]{
+                return !messages.empty() || !logger_not_on_destroying;
+            });
+            if(!logger_not_on_destroying && messages.empty()){
+                return; 
+            }
+            
+            // 批量拉取数据
+            size_t fetch_size = std::min((size_t)config.fetch_message_count_max, messages.size());
+            target.clear();
+            for(size_t i = 0; i < fetch_size; ++i){
+                target.push_back(std::move(messages.front()));
+                messages.pop_front();
+            }
+            message_size.fetch_sub(fetch_size, std::memory_order::relaxed);
+
+            if(config.consumer_count > 1 && !messages.empty()){
+                cv.notify_one();
+            }
         }
-        size_t count = fetch_messages(messages);
-        // 没取出一个，说明可能虚假唤醒了
-        if(!count)continue;
-        // 输出数据
-        write_messages(std::span(messages).subspan(0,count));
+        
+        // 在锁外无阻塞输出数据
+        write_messages(std::span(target));
     }
 }
 
@@ -186,7 +201,8 @@ void Logger::write_messages(std::span<LogMsg> msgs,bool autoflush){
     if(!filters.empty()){
         for(auto & msg : msgs){
             if(!msg.m_nice_one)continue;
-            for(auto & filter : filters){
+            for(size_t  i = 0;i < filters.size();++i){
+                auto filter = filters[i];
                 if(!filter->enabled)continue;
                 msg.m_nice_one = filter->filter(msg);
                 if(!msg.m_nice_one)break;
@@ -198,7 +214,9 @@ void Logger::write_messages(std::span<LogMsg> msgs,bool autoflush){
         if(!t.m_nice_one)continue;
         
         t.build_on_consumer();
-        for(auto& target : targets){
+        for(size_t i = 0;i < targets.size();++i){
+            // 不选择&了
+            auto target = targets[i];
             if(!target->enabled)continue;
             target->write(t);
         }
@@ -242,7 +260,7 @@ Logger::Logger(const LoggerConfig & cfg)
 ,messages(msg_alloc)
 ,msg_str_buf()
 ,msg_str_alloc(&msg_str_buf)
-,msg_semaphore(0)
+,cv()
 ,config(cfg)
 ,tag_buf()
 ,tag_alloc(&tag_buf)
@@ -256,7 +274,7 @@ Logger::Logger(const LoggerConfig & cfg)
 
 Logger::~Logger(){
     logger_not_on_destroying = false;
-    msg_semaphore.release(consumers.size() * 10);
+    cv.notify_all();
     flush();
 }
 
@@ -300,7 +318,7 @@ bool Logger::push_message_pmr(int level,std::string_view head,std::pmr::string &
                 msg_sz = messages.size();
             }
         }
-        msg_semaphore.release();
+        cv.notify_one(); 
 
         bool should_digest = (config.enable_back_pressure && (msg_sz >= back_pressure_threshold));
         // 没有线程就别吃了

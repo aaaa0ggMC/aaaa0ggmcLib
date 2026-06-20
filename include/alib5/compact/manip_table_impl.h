@@ -3,7 +3,7 @@
  * @brief Template implementation of streamed ASCII table rendering for log_table.
  * 表格渲染模板实现，将流式上下文中的表格数据渲染为带边框与对齐的 ASCII 表格。
  * @author aaaa0ggmc
- * @date 2026/06/18
+ * @date 2026/06/20
  * @version 5.0
  * @copyright Copyright(c) 2026
  */
@@ -61,7 +61,7 @@ namespace alib5{
             size_t current = buf.size() / base.size();
             if(current < logical_size){
                 buf.reserve(buf.size() + (logical_size - current) * base.size());
-                for(size_t i = current;i <= logical_size;++i){
+                for(size_t i = current;i < logical_size;++i){
                     buf.append(base);
                 }
             }

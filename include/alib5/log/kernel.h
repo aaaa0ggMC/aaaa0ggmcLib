@@ -4,7 +4,7 @@
  * 与日志有关的函数库
  * @author aaaa0ggmc
  * @last-date 2025/04/04
- * @date 2026/06/18
+ * @date 2026/06/20
  * @version 5.0
  * @copyright Copyright(C)2025
  ********************************
@@ -39,7 +39,6 @@
 #include <deque>
 #include <thread>
 #include <mutex>
-#include <semaphore>
 #include <memory_resource>
 #include <memory>
 #include <span>
@@ -64,8 +63,6 @@
 #endif
 
 namespace alib5{
-    /// @brief 最多可以有多少信号，默认最大值就行
-    constexpr long int semaphore_max_val = (long int)std::__semaphore_impl::_S_max;
     /// @brief Consumer构建的时候预留多少msg槽位（运行时可对齐到fetch_max_size的）
     constexpr unsigned int consumer_message_default_count = 128;
     /// @brief 日期字符串预留的空间，一般格式化没问题的
@@ -88,14 +85,19 @@ namespace alib5{
 
     /// @brief 日志核心，负责日志队列维护、转发
     struct ALIB5_API Logger{
-        using targets_t = std::vector<std::shared_ptr<LogTarget>>;
-        using filters_t = std::vector<std::shared_ptr<LogFilter>>;
+        using targets_t = std::deque<std::shared_ptr<LogTarget>>;
+        using filters_t = std::deque<std::shared_ptr<LogFilter>>;
     public:
         friend class LogFactory;
 
-        /// L@brief ogger配置
+        /// @brief Logger配置
         LoggerConfig config;       
 
+        /// @brief 修改mods时上锁
+        // openclaude查出来了append_mod不是线程安全的
+        // 虽然我觉得这个东西实际上单线程就干好了，运行时不变
+        // 但是既然都查出来了，那就改一下
+        std::mutex mod_lock;
         /// @brief 输出对象缓存
         targets_t targets;
         /// @brief 输出对象查找池
@@ -104,6 +106,13 @@ namespace alib5{
         filters_t filters;
         /// @brief 过滤对象查找池
         std::unordered_map<std::string,RefWrapper<filters_t>> search_filters;
+
+        /// @brief 锁，目前还是相信std::mutex的力量
+        std::mutex msg_lock;
+        /// @brief 换成CV似乎更好？
+        std::condition_variable cv;
+        /// @brief 线程池，用来管理consumer
+        std::vector<std::jthread> consumers; 
 
         /// @brief 普通资源池锁，由于处于配置阶段就不这个讲究细分了
         std::mutex monotic_pool_lock;
@@ -122,13 +131,6 @@ namespace alib5{
         std::pmr::deque<LogMsg> messages;
         /// @brief 消息池大小，减小size()调用啥的
         std::atomic<int> message_size;
-
-        /// @brief 锁，目前还是相信std::mutex的力量
-        std::mutex msg_lock;
-        /// @brief 信号量，用来实现异步休眠
-        std::counting_semaphore<semaphore_max_val> msg_semaphore;
-        /// @brief 线程池，用来管理consumer
-        std::vector<std::jthread> consumers; 
         
         /// @brief 背压阈值
         uint64_t back_pressure_threshold;
@@ -495,7 +497,7 @@ namespace alib5{
         st.erase(it);
         // 后面的index都要减少一个
         for(auto& [key,val] : st){
-            if(val.index > cached_index)val--;
+            if(val.index > cached_index) val.index--;
         }
         container.erase(container.begin() + cached_index);
         return true;
@@ -536,6 +538,8 @@ namespace alib5{
             "T must be the derived class of LogTarget or LogFilter!");
         auto ptr = std::make_shared<T>(std::forward<Args>(args)...);
         
+        // 这里我就全局锁算了，又不是常用操作
+        std::lock_guard<std::mutex> lock(mod_lock);
         if constexpr(std::is_base_of_v<LogTarget,T>){
             /// @todo 懒得理你
             auto it = search_targets.find(std::string(name));
@@ -560,6 +564,8 @@ namespace alib5{
     template<class T> inline bool Logger::remove_mod(std::string_view name){
         static_assert(std::is_same_v<LogTarget,T> || std::is_same_v<LogFilter,T>,
             "T must be one of LogTarget or LogFilter!");
+
+        std::lock_guard<std::mutex> lock(mod_lock);
         if constexpr(std::is_same_v<LogTarget,T>){
             return safe_remove_mod(name,search_targets,targets);
         }else{

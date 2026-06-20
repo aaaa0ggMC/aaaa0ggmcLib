@@ -168,7 +168,7 @@ namespace alib5::detail {
                     } else if constexpr(AnnotationBaseType::attribute_trait == attr::AttributeTraits::SchemaValidate) {
                         restraint += " VALIDATE ";
                         restraint += value_mapping.validate_function();
-                    } if constexpr(AnnotationBaseType::attribute_trait == attr::AttributeTraits::ValidateWithArgs) {
+                    } else if constexpr(AnnotationBaseType::attribute_trait == attr::AttributeTraits::ValidateWithArgs) {
                         restraint += " VALIDATE ";
                         restraint += AnnotationBaseType::validate_function();
 
