@@ -4,9 +4,17 @@
 
 using namespace alib5;
 
-thread_local std::string LogMsg::sdate;
-thread_local std::string LogMsg::scomposed;
 std::mutex lot::Console::console_lock;
+
+std::string& LogMsg::sdate(){
+    static thread_local std::string sdate;
+    return sdate;
+}
+
+std::string& LogMsg::scomposed(){
+    static thread_local std::string scomposed;
+    return scomposed;
+}
 
 void log_stacktrace::write_to_log(std::pmr::string & str){
     int index = -1;

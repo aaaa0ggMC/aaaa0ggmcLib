@@ -404,7 +404,7 @@ namespace alib5{
     inline void LogMsg::build_on_consumer(){
         if(cfg.disable_extra_information)return;
         [[maybe_unused]] thread_local static bool inited = [&]{
-            sdate.resize(date_str_resize);
+            sdate().resize(date_str_resize);
             return false;
         }();
         if(cfg.gen_date){
@@ -418,9 +418,9 @@ namespace alib5{
                 #else
                 __internal_alib_localtime(&ptminfo,&rawtime);
                 #endif
-                sdate.clear();
-                sdate.resize(date_str_resize);
-                sdate.resize(snprintf(sdate.data(),date_str_resize,"%02d-%02d-%02d %02d:%02d:%02d",
+                sdate().clear();
+                sdate().resize(date_str_resize);
+                sdate().resize(snprintf(sdate().data(),date_str_resize,"%02d-%02d-%02d %02d:%02d:%02d",
                     ptminfo.tm_year + 1900, ptminfo.tm_mon + 1, ptminfo.tm_mday,
                     ptminfo.tm_hour, ptminfo.tm_min, ptminfo.tm_sec));
                old_time = rawtime;
@@ -431,34 +431,34 @@ namespace alib5{
     inline std::string_view LogMsg::gen_composed(){
         if(cfg.disable_extra_information){body.push_back('\n');return body;}
         [[maybe_unused]] static thread_local bool inited = [&]{
-            scomposed.clear();
-            scomposed.resize(compose_str_resize);
+            scomposed().clear();
+            scomposed().resize(compose_str_resize);
             return false;
         }();
         // 只要保证按照LogMsg的顺序递归而不是lot，那么这个就是valid的
-        if(generated)return scomposed;
+        if(generated)return scomposed();
         size_t beg = 0;
 
-        scomposed.clear();
-        scomposed.resize(scomposed.capacity());
-        if(cfg.gen_date)beg += snprintf(scomposed.data() + beg,scomposed.size() - beg,
-            "[%s]",sdate.c_str());
-        if(cfg.out_level && cfg.level_cast)beg += snprintf(scomposed.data() + beg,scomposed.size() - beg,
+        scomposed().clear();
+        scomposed().resize(scomposed().capacity());
+        if(cfg.gen_date)beg += snprintf(scomposed().data() + beg,scomposed().size() - beg,
+            "[%s]",sdate().c_str());
+        if(cfg.out_level && cfg.level_cast)beg += snprintf(scomposed().data() + beg,scomposed().size() - beg,
             "[%s]",cfg.level_cast(level).data());
-        if(cfg.out_header && header.data() != nullptr && header.size())beg += snprintf(scomposed.data() + beg,scomposed.size() - beg,
+        if(cfg.out_header && header.data() != nullptr && header.size())beg += snprintf(scomposed().data() + beg,scomposed().size() - beg,
             "[%s]",header.data());
-        if(cfg.gen_time)beg += snprintf(scomposed.data() + beg,scomposed.size() - beg,
+        if(cfg.gen_time)beg += snprintf(scomposed().data() + beg,scomposed().size() - beg,
             "[%.2lfms]",timestamp);
-        if(cfg.gen_thread_id)beg += snprintf(scomposed.data() + beg,scomposed.size() - beg,
+        if(cfg.gen_thread_id)beg += snprintf(scomposed().data() + beg,scomposed().size() - beg,
             "[TID%lu]",thread_id);
-        scomposed.resize(beg);
-        scomposed.append(":");
+        scomposed().resize(beg);
+        scomposed().append(":");
         
-        scomposed += body;
-        scomposed.append(cfg.separator);
+        scomposed() += body;
+        scomposed().append(cfg.separator);
         generated = true;
 
-        return scomposed;
+        return scomposed();
     }
 
     inline void LogMsg::move_msg(LogMsg&& msg){

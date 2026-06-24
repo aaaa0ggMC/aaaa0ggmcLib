@@ -45,10 +45,8 @@ namespace alib5{
         std::pmr::vector<LogCustomTag> tags;
 
         //// 缓冲 ////
-        /// @brief Buffer used to cache date string data. / 用于缓冲日期数据
-        static thread_local std::string sdate;
-        /// @brief Buffer used to cache the final composed string. / 用户缓冲最终生成的数据
-        static thread_local std::string scomposed;
+        static std::string& sdate();
+        static std::string& scomposed();
 
         /**
          * @brief Constructs core content with allocators and config.

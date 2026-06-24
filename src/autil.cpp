@@ -314,7 +314,13 @@ std::string_view misc::get_time() ALIB5_NOEXCEPT {
     time_t rawtime;
     struct tm ptminfo;
     time(&rawtime);
+
+#ifdef _WIN32
+    localtime_s(&ptminfo,&rawtime);
+#else
     localtime_r(&rawtime,&ptminfo);
+#endif 
+
     buffer.clear();
     std::format_to(std::back_inserter(buffer), 
         "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",

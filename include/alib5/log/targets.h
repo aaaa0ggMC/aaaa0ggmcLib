@@ -436,7 +436,7 @@ namespace alib5::lot{
             if (msg.cfg.gen_date) {
                 s_buffer.append("[");
                 if (cfg.date_color_schema) s_buffer.append(cfg.date_color_schema(msg));
-                s_buffer.append(msg.sdate);
+                s_buffer.append(msg.sdate());
                 if (cfg.date_color_schema) s_buffer.append("\e[0m");
                 s_buffer.append("]");
             }
