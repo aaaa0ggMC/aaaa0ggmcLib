@@ -201,7 +201,7 @@ namespace alib5 {
             integer = 0;
         }
 
-        CacheValue(const CacheValue& other, std::pmr::memory_resource* a) 
+        CacheValue(const CacheValue& other, std::pmr::memory_resource* a = ALIB5_DEFAULT_MEMORY_RESOURCE) 
         : data(other.data, a), data_dirt(other.data_dirt), type(other.type) {
             this->integer = other.integer; 
         }
@@ -362,7 +362,7 @@ namespace alib5 {
             integer = 0;
         }
 
-        ConstableValue(const ConstableValue& other, std::pmr::memory_resource* a)
+        ConstableValue(const ConstableValue& other, std::pmr::memory_resource* a = ALIB5_DEFAULT_MEMORY_RESOURCE)
         : data(other.data, a), type(other.type) {
             this->integer = other.integer;
         }
@@ -710,6 +710,10 @@ namespace alib5 {
 
         template<class T> T& set();
         auto& set_null() { return set<std::monostate>(); }
+        // 理论可以使用,但是尽量别用,防止混淆
+        auto& _set_object() { return set<Object>(); }
+        auto& _set_array() { return set<Array>(); }
+        auto& _set_value() { return set<value_type>(); }
 
         explicit BasicAData(std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE) {
             allocator = __a;
@@ -1023,6 +1027,24 @@ namespace alib5 {
         return data;
     }
 
+    /// 转换值
+    template<class V2, class V1>
+    V2 convert_value(const BasicAData<V1>& src);
+
+    /// 对不同类型的data进行迁移
+    /// 不会对dest进行清空,而是采用bfs慢慢赋值
+    template<class V1,class V2>
+    void migrate(BasicAData<V2> & dest,const BasicAData<V1> & src);
+
+    template<class V1, class V2>
+    void migrate(BasicAData<V2>& dest, BasicAData<V1>&& src);
+
+    template<class V1, class V2>
+    BasicAData<V1> migrate(const BasicAData<V1>& src);
+
+    template<class V1, class V2>
+    BasicAData<V1> migrate(BasicAData<V1>&& src);
+
     using AData = BasicAData<>;
     using dvalue_t = CacheValue;
     using dadata_t = AData;
@@ -1031,6 +1053,7 @@ namespace alib5 {
     using dtype_t = AData::Type;
     using dvalue_type_t = CacheValue::Type;
 
+    using ConstableAData = BasicAData<ConstableValue>;
 } // namespace alib5
 
 // ----------------------------------------------------------------------------------------------------
@@ -1038,7 +1061,6 @@ namespace alib5 {
 // ----------------------------------------------------------------------------------------------------
 
 namespace alib5 {
-
     inline void CacheValue::sync_to_string() const {
         if(!data_dirt) return;
         switch(type) {
@@ -1856,6 +1878,104 @@ namespace alib5 {
         }
         return *this;
     }
+
+    template<class V1, class V2>
+    inline void migrate(BasicAData<V2>& dest, const BasicAData<V1>& src) {
+        if constexpr (std::is_same_v<V1, V2>) {
+            dest.__merge_impl(src, [](auto& d, const auto& s) {
+                return MergeOperation::Override;
+            });
+            return;
+        }
+
+        struct StackItem {
+            BasicAData<V2>* d_ptr;
+            const BasicAData<V1>* s_ptr;
+        };
+        std::vector<StackItem> stack;
+        stack.push_back({&dest, &src});
+
+        while (!stack.empty()) {
+            StackItem curr = stack.back();
+            stack.pop_back();
+
+            const auto& s = *curr.s_ptr;
+            auto& d = *curr.d_ptr;
+
+            if(s.is_null()){
+                d.set_null();
+                continue;
+            }
+
+            if(s.is_object()){
+                if (!d.is_object()) d._set_object();
+                auto& dobj = d.object();
+                const auto& sobj = s.object();
+
+                dobj.children.reserve(sobj.size() + dobj.size());
+                // 遍历源对象的所有成员
+                for (auto it = sobj.begin(); it != sobj.end(); ++it) {
+                    // 直接通过 dobj[key] 获取或创建目标节点，并入栈处理
+                    // 这样无论是基本类型还是复合类型，都会在下一轮循环中被正确处理
+                    stack.push_back({&dobj[it.first()], &it.second()});
+                }
+            }else if (s.is_array()) {
+                if (!d.is_array()) d._set_array();
+                auto& darr = d.array();
+                const auto& sarr = s.array();
+                
+                darr.reserve(sarr.size()); // 确保大小一致
+                for (size_t i = 0; i < sarr.size(); ++i) {
+                    stack.push_back({&darr[i], &sarr[i]});
+                }
+            }else if(s.is_value()){
+                auto & value = s.value();
+
+                if(value.get_type() == value.STRING){
+                    d.rewrite(value.template to<std::string_view>());
+                }else if(value.get_type() == value.FLOATING){
+                    d.rewrite(value.template to<double>());
+                }else if(value.get_type() == value.INT){
+                    d.rewrite(value.template to<int64_t>());
+                }else if(value.get_type() == value.BOOL){
+                    d.rewrite(value.template to<bool>());
+                }else{
+                    d.set_null();
+                }
+            }
+        }
+    }
+
+    // 重载版本：支持移动语义
+    template<class V1, class V2>
+    inline void migrate(BasicAData<V2>& dest, BasicAData<V1>&& src){
+        if constexpr (std::is_same_v<V1, V2>){
+            // 类型相同，使用移动语义的merge
+            dest.__merge_impl(std::move(src), [](auto& d, auto& s){
+                return MergeOperation::Override;
+            });
+        } else {
+            // 类型不同，转换为const引用处理
+            migrate(dest, static_cast<const BasicAData<V1>&>(src));
+            // 清空源数据
+            src.clear();
+        }
+    }
+    
+    template<class V2, class V1>
+    BasicAData<V2> migrate(const BasicAData<V1>& src){
+        BasicAData<V2> data;
+        migrate(data,src);
+        return data;
+    }
+
+    template<class V2, class V1>
+    BasicAData<V2> migrate(BasicAData<V1>&& src){
+        BasicAData<V2> data;
+        migrate(data,std::move(src));
+        return data;
+    }
+
 } // namespace alib5
 
 #endif
