@@ -50,7 +50,7 @@ namespace alib5::data {
         };
 
         using CompareFn = bool(std::string_view a, std::string_view b);
-        using FilterFn = FilterOp(std::string_view key, const AData& node);
+        using FilterFn = FilterOp(std::string_view key, const dadata_t& node);
 
         // ---------------------------------------------------------
         // Dump Settings

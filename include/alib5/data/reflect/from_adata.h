@@ -39,9 +39,10 @@ namespace alib5::detail {
         size_t N = 0,
         std::array<std::meta::info, N> annotations = {},
         class LoggerType = std::nullptr_t,
-        class InT
+        class InT,
+        class Data
     > 
-    void _from_adata(InT & fill_data, const AData & root, LoggerType * debug_logger = nullptr);
+    void _from_adata(InT & fill_data, const Data & root, LoggerType * debug_logger = nullptr);
 
 }
 
@@ -52,15 +53,16 @@ namespace alib5::detail {
         size_t N,
         std::array<std::meta::info, N> annotations,
         class LoggerType,
-        class InT
+        class InT,
+        class Data
     > 
-    inline void _from_adata(InT & fill_data, const AData & root, LoggerType * debug_logger) {   
+    inline void _from_adata(InT & fill_data, const Data & root, LoggerType * debug_logger) {   
         constexpr std::meta::access_context context = std::meta::access_context::unchecked(); 
         
         if constexpr(std::is_enum_v<std::decay_t<InT>>) {
            auto & mapper = get_enum_mapper<std::decay_t<InT>>();
 
-           if(auto it = mapper.find(root.to<std::string_view>()); it != mapper.end()) {
+           if(auto it = mapper.find(root.template to<std::string_view>()); it != mapper.end()) {
                 fill_data = it->second;
            } else {
                 // Do nothing for now. (Original: 啥都不做现在)
@@ -71,7 +73,7 @@ namespace alib5::detail {
                 "Node is not a value!"
             );
 
-            fill_data = root.to<InT>();
+            fill_data = root.template to<InT>();
 
             if constexpr(cfg.debug) {
                 if(debug_logger) [[likely]] {

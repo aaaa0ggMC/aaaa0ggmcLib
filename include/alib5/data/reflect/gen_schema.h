@@ -27,18 +27,18 @@ namespace alib5::detail {
      * @return AData The generated schema object.
      */
     template<class T, size_t N = 0, std::array<std::meta::info, N> annotations = {}>
-    AData _generate_schema();
+    dadata_t _generate_schema();
 
 }
 
 namespace alib5::detail {
 
     template<class T, size_t N, std::array<std::meta::info, N> annotations>
-    inline AData _generate_schema() {
+    inline dadata_t _generate_schema() {
         using decayed_T = std::decay_t<T>;
         constexpr auto context = std::meta::access_context::unchecked(); 
 
-        AData root;
+        dadata_t root;
 
         bool add_constaint = true;
 

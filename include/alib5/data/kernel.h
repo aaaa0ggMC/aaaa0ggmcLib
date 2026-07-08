@@ -22,6 +22,9 @@
 #include <variant>
 #include <optional>
 #include <charconv>
+#include <algorithm>
+#include <cmath>
+#include <limits>
 
 namespace alib5 {
 
@@ -107,7 +110,7 @@ namespace alib5 {
      * Chinese: 比较的模糊度逐渐扩大
      */
     enum class CompareStrategy : int64_t {
-        Strict,     ///< Strictly restrict Value type and exact numerical value.
+        Strict,     ///< Strictly restrict CacheValue type and exact numerical value.
         BoolStrict, ///< Allows INT and DOUBLE comparisons; Bool only supports 0 or 1.
         Lesser,     ///< Simulates C/C++ implicit boolean conversions.
         Fuzzy       ///< Allows cross-type comparisons (INT, STRING, etc.) if numerical values match.
@@ -126,7 +129,7 @@ namespace alib5 {
      * English: High probability of malfunctioning in multi-threading, so locks must be added in multi-threaded environments!!! Regardless of const!!!
      * Chinese: 多线程下大概率不能正常工作,因此多线程下必须加锁!!!无论有没有const!!!
      */
-    struct ALIB5_API Value {            
+    struct ALIB5_API CacheValue {            
         enum Type {
             STRING,
             INT,
@@ -170,7 +173,7 @@ namespace alib5 {
          * @brief Default constructor.
          * @param __a Memory resource allocator.
          */
-        Value(std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE) : data(__a) {
+        CacheValue(std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE) : data(__a) {
             type = STRING;
             data_dirt = false;
             integer = 0;
@@ -180,8 +183,8 @@ namespace alib5 {
          * @brief Generic constructor for supported node values (non-string).
          */
         template<class T> 
-        requires(!IsStringLike<std::decay_t<T>> && !std::is_same_v<std::decay_t<T>, Value>)
-        Value(T&& d, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE) : data(__a) {
+        requires(!IsStringLike<std::decay_t<T>> && !std::is_same_v<std::decay_t<T>, CacheValue>)
+        CacheValue(T&& d, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE) : data(__a) {
             type = STRING;
             data_dirt = true;
             transform<std::decay_t<T>>() = std::forward<T>(d);
@@ -191,25 +194,25 @@ namespace alib5 {
          * @brief String-specific constructor.
          */
         template<IsStringLike STR>
-        Value(STR&& d, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE)
+        CacheValue(STR&& d, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE)
         : data(std::forward<STR>(d), __a) {
             type = STRING;
             data_dirt = false;
             integer = 0;
         }
 
-        Value(const Value& other, std::pmr::memory_resource* a) 
+        CacheValue(const CacheValue& other, std::pmr::memory_resource* a) 
         : data(other.data, a), data_dirt(other.data_dirt), type(other.type) {
             this->integer = other.integer; 
         }
 
-        Value(Value&& other) ALIB5_NOEXCEPT 
+        CacheValue(CacheValue&& other) ALIB5_NOEXCEPT 
         : data(std::move(other.data)), data_dirt(other.data_dirt), type(other.type), integer(other.integer) {
             other.data_dirt = true;
             other.data.clear();
         }
 
-        Value(Value&& other, std::pmr::memory_resource* a) 
+        CacheValue(CacheValue&& other, std::pmr::memory_resource* a) 
         : data(std::move(other.data), a), data_dirt(other.data_dirt), type(other.type) {
             this->integer = other.integer;
             if(a == other.data.get_allocator()) {
@@ -218,7 +221,7 @@ namespace alib5 {
             }
         }
 
-        Value& operator=(const Value& other) {
+        CacheValue& operator=(const CacheValue& other) {
             if(this == &other) [[unlikely]] return *this;
             data = other.data; 
             data_dirt = other.data_dirt;
@@ -227,7 +230,7 @@ namespace alib5 {
             return *this;
         }
 
-        Value& operator=(Value&& other) ALIB5_NOEXCEPT {
+        CacheValue& operator=(CacheValue&& other) ALIB5_NOEXCEPT {
             if(this == &other) [[unlikely]] return *this;
             data = std::move(other.data);
             data_dirt = other.data_dirt;
@@ -273,13 +276,13 @@ namespace alib5 {
          * @brief Sets the internal value directly.
          */
         template<class T> 
-        Value& set(T&& val);
+        CacheValue& set(T&& val);
 
         /**
          * @brief Assignment operator for supported node values.
          */
         template<IsNodeValue T> 
-        inline Value& operator=(T&& val) { 
+        inline CacheValue& operator=(T&& val) { 
             set(std::forward<T>(val)); 
             return *this; 
         }
@@ -301,28 +304,139 @@ namespace alib5 {
         /**
          * @brief Compares two values based on a given strategy.
          */
-        static bool equals(const Value& left, const Value& right, CompareStrategy strategy = CompareStrategy::Strict);
+        static bool equals(const CacheValue& left, const CacheValue& right, CompareStrategy strategy = CompareStrategy::Strict);
 
         /**
          * @brief Compares this value against another.
          */
-        bool equals(const Value& b, CompareStrategy strategy = CompareStrategy::Strict) const {
+        bool equals(const CacheValue& b, CompareStrategy strategy = CompareStrategy::Strict) const {
             return equals(*this, b, strategy);
         }
     };
 
     /**
-     * @brief A generic dynamic data node representing Null, Value, Object, or Array.
+     * @brief Value policy whose const operations never mutate object state.
+     *
+     * Numeric stringify uses a thread-local scratch buffer, so returned string views are short-lived
+     * and may be invalidated by the next stringify call on the same thread.
+     */
+    struct ALIB5_API ConstableValue {
+        enum Type {
+            STRING = CacheValue::STRING,
+            INT = CacheValue::INT,
+            FLOATING = CacheValue::FLOATING,
+            BOOL = CacheValue::BOOL
+        };
+
+    private:
+        std::pmr::string data;
+        Type type;
+
+        union {
+            int64_t integer;
+            double floating;
+            bool boolean;
+        };
+
+        static std::pmr::string& stringify_buffer();
+        std::string_view stringify() const;
+
+    public:
+        ConstableValue(std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE) : data(__a) {
+            type = STRING;
+            integer = 0;
+        }
+
+        template<class T>
+        requires(!IsStringLike<std::decay_t<T>> && !std::is_same_v<std::decay_t<T>, ConstableValue>)
+        ConstableValue(T&& d, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE) : data(__a) {
+            type = STRING;
+            integer = 0;
+            set(std::forward<T>(d));
+        }
+
+        template<IsStringLike STR>
+        ConstableValue(STR&& d, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE)
+        : data(std::forward<STR>(d), __a) {
+            type = STRING;
+            integer = 0;
+        }
+
+        ConstableValue(const ConstableValue& other, std::pmr::memory_resource* a)
+        : data(other.data, a), type(other.type) {
+            this->integer = other.integer;
+        }
+
+        ConstableValue(ConstableValue&& other) ALIB5_NOEXCEPT
+        : data(std::move(other.data)), type(other.type), integer(other.integer) {}
+
+        ConstableValue(ConstableValue&& other, std::pmr::memory_resource* a)
+        : data(std::move(other.data), a), type(other.type), integer(other.integer) {}
+
+        ConstableValue& operator=(const ConstableValue& other) {
+            if(this == &other) [[unlikely]] return *this;
+            data = other.data;
+            type = other.type;
+            integer = other.integer;
+            return *this;
+        }
+
+        ConstableValue& operator=(ConstableValue&& other) ALIB5_NOEXCEPT {
+            if(this == &other) [[unlikely]] return *this;
+            data = std::move(other.data);
+            type = other.type;
+            integer = other.integer;
+            return *this;
+        }
+
+        inline Type get_type() const { return type; }
+        std::string_view raw_view() const { return data; }
+
+        template<class T, bool invoke_err = true>
+        auto& transform();
+
+        template<class T>
+        auto& reconstruct();
+
+        template<class T>
+        ConstableValue& set(T&& val);
+
+        template<IsNodeValue T>
+        inline ConstableValue& operator=(T&& val) {
+            set(std::forward<T>(val));
+            return *this;
+        }
+
+        template<class T>
+        auto expect() const;
+
+        template<class T>
+        auto to() const;
+
+        static bool equals(const ConstableValue& left, const ConstableValue& right, CompareStrategy strategy = CompareStrategy::Strict);
+
+        bool equals(const ConstableValue& b, CompareStrategy strategy = CompareStrategy::Strict) const {
+            return equals(*this, b, strategy);
+        }
+    };
+
+    using Value = CacheValue;
+
+    /**
+     * @brief A generic dynamic data node representing Null, CacheValue, Object, or Array.
      * 
      * @warning Not thread-safe regardless of const qualification.
      */
-    struct ALIB5_API AData {
-        
+    template<class ValueType = CacheValue>
+    struct ALIB5_API BasicAData {
+        using value_type = ValueType;
+        using data_type = BasicAData<value_type>;
+
         /**
-         * @brief Object representation containing Key-Value mappings.
+         * @brief Object representation containing Key-CacheValue mappings.
          */
         struct ALIB5_API Object {
-            using container_t = ecs::detail::LinearStorage<AData>;
+            using container_t = ecs::detail::LinearStorage<data_type>;
             
             container_t children; ///< Storage for child nodes.
             
@@ -369,7 +483,7 @@ namespace alib5 {
              * English: Object has strict requirements for index alignment, so multithreaded operations must be locked by the user.
              * Chinese: Object对索引对齐要求十分严格,因此多线程操作一定要自己加锁
              */
-            std::pair<AData*, size_t> ALIB5_API ensure_node(std::string_view key);
+            std::pair<data_type*, size_t> ALIB5_API ensure_node(std::string_view key);
             
             bool ALIB5_API rename(std::string_view old_name, std::string_view new_name);
             bool ALIB5_API remove(std::string_view name);
@@ -381,19 +495,19 @@ namespace alib5 {
                 return ref(children, ensure_node(visit).second); 
             }
 
-            inline AData& operator[](std::string_view visit) { 
+            inline data_type& operator[](std::string_view visit) { 
                 return *ensure_node(visit).first; 
             }
         
-            inline const AData* at_ptr(std::string_view visit) const {
+            inline const data_type* at_ptr(std::string_view visit) const {
                 auto it = object_mapper.find(visit);
                 if(it == object_mapper.end()) return nullptr;
                 return &children.data[it->second];
             }
             
-            inline AData* at_ptr(std::string_view visit) {
-                return const_cast<AData*>(
-                    (((const AData::Object*)(this))->at_ptr(visit))
+            inline data_type* at_ptr(std::string_view visit) {
+                return const_cast<data_type*>(
+                    (((const data_type::Object*)(this))->at_ptr(visit))
                 );
             }
 
@@ -405,7 +519,7 @@ namespace alib5 {
             /**
              * @brief Const access to a node. Will panic if the node does not exist.
              */
-            inline const AData& operator[](std::string_view visit) const {
+            inline const data_type& operator[](std::string_view visit) const {
                 auto a = at_ptr(visit);
                 panicf_if(!a, "Invalid visit {}!", visit);
                 return *a;
@@ -420,13 +534,19 @@ namespace alib5 {
             template<bool is_const>
             struct ObjectIterator {
                 using iterator_category = std::forward_iterator_tag;
-                using value_type = AData;
+                using value_type = data_type;
                 using difference_type = std::ptrdiff_t;
-                using pointer = std::conditional_t<is_const, const AData*, AData*>;
-                using reference = std::conditional_t<is_const, const AData&, AData&>;
+                using pointer = std::conditional_t<is_const, const value_type*, value_type*>;
+                using reference = std::conditional_t<is_const, const value_type&, value_type&>;
                 
-                std::conditional_t<is_const, decltype(object_mapper)::const_iterator, decltype(object_mapper)::iterator> it;
-                std::conditional_t<is_const, const container_t&, container_t&> cont;
+                using it_type = std::conditional_t<is_const,
+                    typename decltype(object_mapper)::const_iterator,
+                    typename decltype(object_mapper)::iterator
+                >;
+                using cont_ref = std::conditional_t<is_const, const container_t&, container_t&>;
+                
+                it_type it;
+                cont_ref cont;
 
                 struct Proxy {
                     const std::pmr::string& _first;
@@ -436,7 +556,7 @@ namespace alib5 {
                     reference second() const { return _second; }
                 };
 
-                ObjectIterator(decltype(it) iter, decltype(cont) container) : it(iter), cont(container) {}
+                ObjectIterator(it_type iter, cont_ref container) : it(iter), cont(container) {}
 
                 auto& first() const { return it->first; }
                 auto& second() const { return cont.data[it->second]; }
@@ -463,10 +583,10 @@ namespace alib5 {
         };
 
         /**
-         * @brief Array representation containing an ordered list of AData nodes.
+         * @brief Array representation containing an ordered list of BasicAData nodes.
          */
         struct ALIB5_API Array {
-            using container_t = std::pmr::vector<AData>;
+            using container_t = std::pmr::vector<data_type>;
             container_t values;
 
             ALIB5_API Array(std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE);
@@ -492,28 +612,28 @@ namespace alib5 {
              */
             RefWrapper<container_t> safe_visit(std::ptrdiff_t index);
             
-            AData& operator[](std::ptrdiff_t index);
-            const AData& operator[](std::ptrdiff_t index) const;
+            data_type& operator[](std::ptrdiff_t index);
+            const data_type& operator[](std::ptrdiff_t index) const;
 
             void reserve(size_t size) { values.reserve(size); }
             
             /**
              * @brief Ensures array length and returns span of newly created elements.
              */
-            std::span<AData> ALIB5_API ensure(size_t size);
+            std::span<data_type> ALIB5_API ensure(size_t size);
 
             inline size_t size() const { return values.size(); }
             inline void clear() { values.clear(); }
             inline bool empty() const { return values.empty(); }
 
-            inline const AData* at_ptr(ptrdiff_t index) const {
+            inline const data_type* at_ptr(ptrdiff_t index) const {
                 if(index < 0) index = values.size() + index;
                 if(index >= values.size()) return nullptr;
                 return &values[index];
             } 
             
-            inline AData* at_ptr(ptrdiff_t index) {
-                return const_cast<AData*>(
+            inline data_type* at_ptr(ptrdiff_t index) {
+                return const_cast<data_type*>(
                     (((const Array*)(this))->at_ptr(index))
                 );
             }
@@ -532,7 +652,7 @@ namespace alib5 {
         };
 
     private:
-        std::variant<std::monostate, Value, Object, Array> data;
+        std::variant<std::monostate, value_type, Object, Array> data;
         std::pmr::memory_resource* allocator;
         
         template<class T> 
@@ -551,7 +671,7 @@ namespace alib5 {
         template<class T> 
         inline auto& __get_value() {
             return const_cast<std::decay_t<T>&>(
-                static_cast<const AData*>(this)->__get_value<T>()
+                static_cast<const BasicAData*>(this)->__get_value<T>()
             );
         }
 
@@ -569,8 +689,8 @@ namespace alib5 {
             return std::visit([res](auto&& v) -> decltype(data) {
                 using T = std::decay_t<decltype(v)>;
                 if constexpr (std::is_same_v<T, std::monostate>) return v;
-                else if constexpr (std::is_same_v<T, Value>) {
-                    Value x(res);
+                else if constexpr (std::is_same_v<T, value_type>) {
+                    value_type x(res);
                     x = v;
                     return x; 
                 } else if constexpr (std::is_same_v<T, Object>) {
@@ -591,48 +711,48 @@ namespace alib5 {
         template<class T> T& set();
         auto& set_null() { return set<std::monostate>(); }
 
-        explicit AData(std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE) {
+        explicit BasicAData(std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE) {
             allocator = __a;
         }
 
         template<IsNodeValue T> 
-        requires (!std::is_same_v<std::remove_cvref_t<T>, AData>)
-        AData(T&& val, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE) {
+        requires (!std::is_same_v<std::remove_cvref_t<T>, BasicAData>)
+        BasicAData(T&& val, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE) {
             allocator = __a;
             this->operator=(std::forward<T>(val));   
         }
 
-        AData(const AData& other)
+        BasicAData(const BasicAData& other)
         : allocator(other.allocator), data(clone_data(other.data, other.allocator)) {}
         
-        AData(AData&& other) ALIB5_NOEXCEPT : allocator(other.allocator) {
+        BasicAData(BasicAData&& other) ALIB5_NOEXCEPT : allocator(other.allocator) {
             *this = std::move(other);
         }
 
-        AData(const AData& other, std::pmr::memory_resource* __a) : allocator(__a) {
+        BasicAData(const BasicAData& other, std::pmr::memory_resource* __a) : allocator(__a) {
             data = clone_data(other.data, __a);
         }
 
-        AData(const AData::Object& other, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE) : allocator(__a) {
-            set<AData::Object>();
+        BasicAData(const BasicAData::Object& other, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE) : allocator(__a) {
+            set<BasicAData::Object>();
             object() = other;
         }
 
-        AData(const AData::Array& other, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE) : allocator(__a) {
-            set<AData::Array>();
+        BasicAData(const BasicAData::Array& other, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE) : allocator(__a) {
+            set<BasicAData::Array>();
             array() = other;
         }
 
-        AData(const Value& other, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE) : allocator(__a) {
-            set<Value>();
+        BasicAData(const value_type& other, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE) : allocator(__a) {
+            set<value_type>();
             value() = other;
         }
 
-        AData(const std::monostate& other, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE) : allocator(__a) {
+        BasicAData(const std::monostate& other, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE) : allocator(__a) {
             set<std::monostate>();
         }
 
-        ~AData() = default;
+        ~BasicAData() = default;
 
         /**
          * @brief Returns a detached copy of this data.
@@ -641,7 +761,7 @@ namespace alib5 {
          * English: Solves the crash caused by assignment between parent and child. Issue resolved, API retained for compatibility.
          * Chinese: 解决父子之间赋值出现的crash. 问题已经被处理了,调整了赋值链条,但是api保留一下
          */
-        AData detach() const { return *this; }
+        BasicAData detach() const { return *this; }
 
         inline Type get_type() const { return (Type)data.index(); }
         inline bool is_null() const { return get_type() == TNull; }
@@ -649,40 +769,40 @@ namespace alib5 {
         inline bool is_array() const { return get_type() == TArray; }
         inline bool is_value() const { return get_type() == TValue; }
 
-        static bool equals(const AData& left, const AData& right, CompareStrategy strategy = CompareStrategy::Strict);
-        bool equals(const AData& b, CompareStrategy strategy = CompareStrategy::Strict) const {
+        static bool equals(const BasicAData& left, const BasicAData& right, CompareStrategy strategy = CompareStrategy::Strict);
+        bool equals(const BasicAData& b, CompareStrategy strategy = CompareStrategy::Strict) const {
             return equals(*this, b, strategy);
         }
 
-        Value& value() { return __get_value<Value>(); }
+        value_type& value() { return __get_value<value_type>(); }
         Object& object() { return __get_value<Object>(); }
         Array& array() { return __get_value<Array>(); }
         std::monostate& null() { return __get_value<std::monostate>(); }
         
-        const Value& value() const { return __get_value<Value>(); }
+        const value_type& value() const { return __get_value<value_type>(); }
         const Object& object() const { return __get_value<Object>(); }
         const Array& array() const { return __get_value<Array>(); }
         const std::monostate& null() const { return __get_value<std::monostate>(); }
 
         template<IsNodeValue T> 
-        AData& operator=(T&& val) {
-            Value& v = __ensure_type<Value>();
+        BasicAData& operator=(T&& val) {
+            value_type& v = __ensure_type<value_type>();
             v = std::forward<T>(val);
             return *this;
         }
 
         template<class T> 
-        AData& rewrite(T&& val) {
+        BasicAData& rewrite(T&& val) {
             set<std::monostate>();
             *this = std::forward<T>(val);
             return *this;
         }
 
         /**
-         * @brief Rewrites current node utilizing move semantics on another AData node. 
+         * @brief Rewrites current node utilizing move semantics on another BasicAData node. 
          * The moved object gets reset to NULL.
          */
-        AData& rewrite(AData&& other) {
+        BasicAData& rewrite(BasicAData&& other) {
             using safe_t = std::remove_cv_t<decltype(data)>;
             if(this == &other) return *this;
             safe_t d = std::move(other.data);
@@ -696,11 +816,11 @@ namespace alib5 {
             return *this;
         }
 
-        AData(std::initializer_list<const AData> list) {
+        BasicAData(std::initializer_list<const BasicAData> list) {
             *this = list;
         }
 
-        AData& operator=(std::initializer_list<const AData> list) {
+        BasicAData& operator=(std::initializer_list<const BasicAData> list) {
             [[unlikely]] if(!is_array() && !is_null()) {
                 panic_if(!is_array() && !is_null(), "Implicit type cast is forbidden.");
             }
@@ -711,12 +831,12 @@ namespace alib5 {
             return *this;
         }
 
-        AData& operator=(AData&& val) {
+        BasicAData& operator=(BasicAData&& val) {
             rewrite(std::move(val));    
             return *this;
         }
 
-        AData& operator=(const AData& val) {
+        BasicAData& operator=(const BasicAData& val) {
             [[unlikely]] if(this == &val) return *this;
             [[unlikely]] if(get_type() != TNull && val.get_type() != TNull && get_type() != val.get_type()) {
                 panic_if(get_type() != val.get_type(), "Implicit type cast is forbidden.");
@@ -732,23 +852,27 @@ namespace alib5 {
             return *this;
         }
 
-        AData& operator[](std::string_view visit) {
+        BasicAData& operator[](std::string_view visit) {
             Object& o = __ensure_type<Object>();
             return o[visit];
         }
 
-        const AData& operator[](std::string_view visit) const {
+        const BasicAData& operator[](std::string_view visit) const {
             return object()[visit];
         }
 
-        AData& operator[](std::ptrdiff_t visit) {
+        BasicAData& operator[](std::ptrdiff_t visit) {
             Array& o = __ensure_type<Array>();
             return o[visit];
         }
 
+        const BasicAData& operator[](std::ptrdiff_t visit) const {
+            return array()[visit];
+        }
+
         template<class T> 
         auto to() const {
-            return value().to<T>();
+            return value().template to<T>();
         }
 
         template<class T> 
@@ -759,7 +883,7 @@ namespace alib5 {
 
         template<class T> 
         auto expect() const {
-            return value().expect<T>();
+            return value().template expect<T>();
         }
 
         template<class T> 
@@ -771,54 +895,54 @@ namespace alib5 {
         /**
          * @brief Jumps to a specific pointer path. Returns nullptr if missing.
          */
-        const AData* ALIB5_API jump_ptr(std::string_view path, bool invoke_err = true) const;
+        const BasicAData* ALIB5_API jump_ptr(std::string_view path, bool invoke_err = true) const;
 
-        AData* jump_ptr(std::string_view path, bool invoke_err = true) {
-            return const_cast<AData*>(
-                (((const AData*)this)->jump_ptr(path, invoke_err))
+        BasicAData* jump_ptr(std::string_view path, bool invoke_err = true) {
+            return const_cast<BasicAData*>(
+                (((const BasicAData*)this)->jump_ptr(path, invoke_err))
             );
         }
 
-        AData& jump(std::string_view path, bool invoke_err = true) {
-            AData* ptr = jump_ptr(path, invoke_err);
+        BasicAData& jump(std::string_view path, bool invoke_err = true) {
+            BasicAData* ptr = jump_ptr(path, invoke_err);
             [[unlikely]] if(!ptr) {
                 panicf_if(ptr == NULL, "Failed to locate object with path {}!", path);
             }
             return *ptr; 
         }
 
-        const AData& jump(std::string_view path, bool invoke_err = true) const {
-            const AData* ptr = jump_ptr(path, invoke_err);
+        const BasicAData& jump(std::string_view path, bool invoke_err = true) const {
+            const BasicAData* ptr = jump_ptr(path, invoke_err);
             [[unlikely]] if(!ptr) {
                 panicf_if(ptr == NULL, "Failed to locate object with path {}!", path);
             }
             return *ptr; 
         }
 
-        static inline MergeOperation __merge__default(AData& dest, const AData& src) {
+        static inline MergeOperation __merge__default(BasicAData& dest, const BasicAData& src) {
             return MergeOperation::Override;
         }
 
-        static inline MergeOperation __diff__default(const AData& dest, const AData& src) {
+        static inline MergeOperation __diff__default(const BasicAData& dest, const BasicAData& src) {
             return MergeOperation::Override;
         }
 
-        static inline bool __prune__default(const AData& d) {
+        static inline bool __prune__default(const BasicAData& d) {
             if(d.is_null()) return true;
             else if(d.is_array() && d.array().size() == 0) return true;
             else if(d.is_object() && d.object().size() == 0) return true;
             return false;
         }
         
-        template<bool PruneArray = false, IsPruneFn<AData> EmptyFn = decltype(__prune__default)>
-        AData& prune(EmptyFn&& fn = __prune__default);
+        template<bool PruneArray = false, IsPruneFn<BasicAData> EmptyFn = decltype(__prune__default)>
+        BasicAData& prune(EmptyFn&& fn = __prune__default);
 
         template<class Other, class MergeFn>
-        AData& __merge_impl(Other&& in, MergeFn&& fn);
+        BasicAData& __merge_impl(Other&& in, MergeFn&& fn);
 
-        template<IsMergeFn<AData> MergeFn = decltype(__merge__default)>
-        inline AData& merge(const AData& in, MergeFn&& fn = __merge__default) {
-            return __merge_impl<const AData&>(in, std::forward<MergeFn>(fn));
+        template<IsMergeFn<BasicAData> MergeFn = decltype(__merge__default)>
+        inline BasicAData& merge(const BasicAData& in, MergeFn&& fn = __merge__default) {
+            return __merge_impl<const BasicAData&>(in, std::forward<MergeFn>(fn));
         }
 
         /**
@@ -828,47 +952,47 @@ namespace alib5 {
          * English: Fast r-value processing.
          * Chinese: 快速右值
          */
-        template<IsMergeFn<AData> MergeFn = decltype(__merge__default)>
-        inline AData& merge(AData&& in, MergeFn&& fn = __merge__default) {
-            return __merge_impl<AData&&>(std::move(in), std::forward<MergeFn>(fn));
+        template<IsMergeFn<BasicAData> MergeFn = decltype(__merge__default)>
+        inline BasicAData& merge(BasicAData&& in, MergeFn&& fn = __merge__default) {
+            return __merge_impl<BasicAData&&>(std::move(in), std::forward<MergeFn>(fn));
         }
 
-        template<IsDiffFn<AData> DiffFn = decltype(__diff__default)>
+        template<IsDiffFn<BasicAData> DiffFn = decltype(__diff__default)>
         inline bool diff(
-            const AData& in,
-            AData* added_or_modified = nullptr,
-            AData* src_lack_of = nullptr,
+            const BasicAData& in,
+            BasicAData* added_or_modified = nullptr,
+            BasicAData* src_lack_of = nullptr,
             DiffFn&& fn = __diff__default
         ) const;
 
-        template<IsDataPolicy<AData> DataPolicy = data::JSON> 
+        template<IsDataPolicy<BasicAData> DataPolicy = data::JSON> 
         auto load_from_memory(std::string_view data, DataPolicy&& parser = DataPolicy()) {
             return std::forward<DataPolicy>(parser).parse(data, *this);
         }
 
-        template<IsDataPolicy<AData> DataPolicy = data::JSON> 
+        template<IsDataPolicy<BasicAData> DataPolicy = data::JSON> 
         auto load_from_entry(io::FileEntry entry, DataPolicy&& parser = DataPolicy()) {
             return load_from_memory(entry.read(), std::forward<DataPolicy>(parser));
         }
 
-        template<IsDataPolicy<AData> DataPolicy = data::JSON> 
+        template<IsDataPolicy<BasicAData> DataPolicy = data::JSON> 
         auto load_from_file(std::string_view path, DataPolicy&& parser = DataPolicy()) {
             return load_from_entry(io::load_entry(path, false), std::forward<DataPolicy>(parser));
         }
 
-        template<IsDataPolicy<AData> Dumper = data::JSON, class T> 
+        template<IsDataPolicy<BasicAData> Dumper = data::JSON, class T> 
         auto dump(T& target, Dumper&& dumper = Dumper()) const {
             return std::forward<Dumper>(dumper).dump(target, *this);
         }
 
-        template<IsDataPolicy<AData> Dumper = data::JSON> 
+        template<IsDataPolicy<BasicAData> Dumper = data::JSON> 
         auto dump_to_string(Dumper&& dumper = Dumper(), std::pmr::memory_resource* res = ALIB5_DEFAULT_MEMORY_RESOURCE) const {
             std::pmr::string str(res);
             dump(str, std::forward<Dumper>(dumper));
             return str;
         }
 
-        template<IsDataPolicy<AData> Dumper = data::JSON> 
+        template<IsDataPolicy<BasicAData> Dumper = data::JSON> 
         auto dump_to_entry(const io::FileEntry& entry, Dumper&& dumper = Dumper(), std::pmr::memory_resource* res = ALIB5_DEFAULT_MEMORY_RESOURCE) const {
             std::pmr::string str(res);
             auto val = dump(str, std::forward<Dumper>(dumper));
@@ -876,12 +1000,12 @@ namespace alib5 {
             return val;
         }       
 
-        template<IsDataPolicy<AData> Dumper = data::JSON> 
+        template<IsDataPolicy<BasicAData> Dumper = data::JSON> 
         auto dump_to_file(std::string_view file_path, Dumper&& dumper = Dumper(), std::pmr::memory_resource* res = ALIB5_DEFAULT_MEMORY_RESOURCE) const {
             return dump_to_entry(io::load_entry(file_path, false), std::forward<Dumper>(dumper), res);
         }
 
-        template<IsDataPolicy<AData> Dumper = data::JSON>
+        template<IsDataPolicy<BasicAData> Dumper = data::JSON>
         auto str(Dumper&& dmp = Dumper()) const {
             return dump_to_string(std::forward<Dumper>(dmp));
         }
@@ -892,19 +1016,20 @@ namespace alib5 {
         }
     };
 
-    template<class Dumper = data::JSON>
-    inline AData adata_from_memory(std::string_view mem, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE) {
-        AData data(__a);
-        data.load_from_memory<Dumper>(mem);
+    template<class Dumper = data::JSON,class V = CacheValue>
+    inline BasicAData<V> adata_from_memory(std::string_view mem, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE) {
+        BasicAData<V> data(__a);
+        data.template load_from_memory<Dumper>(mem);
         return data;
     }
 
-    using dvalue_t = Value;
+    using AData = BasicAData<>;
+    using dvalue_t = CacheValue;
     using dadata_t = AData;
     using dobject_t = AData::Object;
     using darray_t = AData::Array;
     using dtype_t = AData::Type;
-    using dvalue_type_t = Value::Type;
+    using dvalue_type_t = CacheValue::Type;
 
 } // namespace alib5
 
@@ -914,7 +1039,7 @@ namespace alib5 {
 
 namespace alib5 {
 
-    inline void Value::sync_to_string() const {
+    inline void CacheValue::sync_to_string() const {
         if(!data_dirt) return;
         switch(type) {
             case INT:      data = ext::to_string(integer); break;
@@ -926,7 +1051,7 @@ namespace alib5 {
     }
 
     template<class T> 
-    inline auto& Value::reconstruct() {
+    inline auto& CacheValue::reconstruct() {
         if constexpr(IsStringLike<T>) {
             type = STRING;
             data_dirt = false;
@@ -948,7 +1073,7 @@ namespace alib5 {
     }
 
     template<class TP, bool invoke_err> 
-    inline auto& Value::transform() {
+    inline auto& CacheValue::transform() {
         using T = std::remove_const_t<TP>;
         auto generator = [this]<class T1, class T2, class T3, Type t1, Type t2, Type t3>(T1& v1, T2& v2, T3& v3) -> auto& {
             [[likely]] if(type == t1) {
@@ -992,7 +1117,7 @@ namespace alib5 {
     }
 
     template<class T> 
-    inline auto Value::expect() const {
+    inline auto CacheValue::expect() const {
         auto make_value = [this]<class T1>(T1& val) {
             if constexpr(IsStringLike<T>) {
                 if(data_dirt) back_sync(ext::to_string(val));
@@ -1016,7 +1141,7 @@ namespace alib5 {
     }
 
     template<class T> 
-    inline auto Value::to() const {
+    inline auto CacheValue::to() const {
         auto ret = expect<T>();
         if(!ret.second) {
             invoke_error(err_format_error, "Cannot format \"{}\" correctly!", data);
@@ -1025,47 +1150,516 @@ namespace alib5 {
     }
 
     template<class T> 
-    inline Value& Value::set(T&& val) {
+    inline CacheValue& CacheValue::set(T&& val) {
         auto& ref = reconstruct<std::decay_t<T>>();
         ref = std::forward<T>(val);
         return *this;
     }
 
-    inline RefWrapper<AData::Array::container_t> AData::Array::safe_visit(std::ptrdiff_t index) {
+    inline bool CacheValue::equals(const CacheValue& left, const CacheValue& right, CompareStrategy st) {
+        auto float_equal = [](double a, double b) {
+            if(a == b) return true;
+            double diff = std::abs(a - b);
+            if(diff < conf_value_compare_epsilon) return true;
+
+            return diff <= ((std::abs(a) < std::abs(b) ? std::abs(b) : std::abs(a))
+                * std::numeric_limits<double>::epsilon());
+        };
+
+        auto lt = left.get_type();
+        auto rt = right.get_type();
+        if(lt == rt) {
+            switch(lt) {
+            case Type::BOOL:
+                return left.boolean == right.boolean;
+            case Type::FLOATING:
+                if(st == CompareStrategy::Strict) return left.floating == right.floating;
+                return float_equal(left.floating, right.floating);
+            case Type::INT:
+                return left.integer == right.integer;
+            case Type::STRING:
+                return left.data == right.data;
+            }
+            panic_debug(true, "aaaa0ggmc,你这里忘记处理其他类型了!!!同时注意下面的代码也要同步你的类型更改");
+        }
+
+        if(st == CompareStrategy::Strict) return false;
+
+        auto is_numeric = [](Type t) {
+            return t == Type::FLOATING || t == Type::INT || t == Type::BOOL;
+        };
+
+        if(is_numeric(lt) && is_numeric(rt)) {
+            if(lt == Type::BOOL || rt == Type::BOOL) {
+                if(st == CompareStrategy::BoolStrict) {
+                    return float_equal(left.to<double>(), right.to<double>());
+                }
+                return left.to<bool>() == right.to<bool>();
+            }
+            return right.to<double>() == left.to<double>();
+        }
+
+        if(st == CompareStrategy::BoolStrict || st == CompareStrategy::Lesser) return false;
+
+        auto& plt = (lt == Type::STRING) ? right : left;
+        auto& prt = (lt == Type::STRING) ? left : right;
+        lt = plt.get_type();
+
+        if(lt == Type::FLOATING) {
+            auto db = prt.expect<double>();
+            if(!db.second) return false;
+            return float_equal(db.first, plt.floating);
+        } else if(lt == Type::INT) {
+            auto db = prt.expect<double>();
+            if(!db.second) return false;
+            return float_equal(db.first, static_cast<double>(plt.integer));
+        } else if(lt == Type::BOOL) {
+            std::string_view s = prt.data;
+            if(plt.boolean) {
+                return s == "true" || s == "TRUE" || s == "1" || s == "yes" || s == "YES";
+            }
+            return s == "false" || s == "FALSE" || s == "0" || s == "no" || s == "NO";
+        }
+
+        return false;
+    }
+
+    inline std::pmr::string& ConstableValue::stringify_buffer() {
+        static thread_local std::pmr::string buffer(ALIB5_DEFAULT_MEMORY_RESOURCE);
+        return buffer;
+    }
+
+    inline std::string_view ConstableValue::stringify() const {
+        if(type == STRING) return data;
+
+        auto& buffer = stringify_buffer();
+        switch(type) {
+        case INT:
+            buffer = ext::to_string(integer);
+            break;
+        case FLOATING:
+            buffer = ext::to_string(floating);
+            break;
+        case BOOL:
+            buffer = ext::to_string(boolean);
+            break;
+        case STRING:
+            break;
+        }
+        return std::string_view(buffer);
+    }
+
+    template<class T>
+    inline auto& ConstableValue::reconstruct() {
+        if constexpr(IsStringLike<T>) {
+            type = STRING;
+            return data;
+        } else {
+            data.clear();
+
+            if constexpr(std::is_same_v<T, bool>) {
+                type = BOOL;
+                return boolean;
+            } else if constexpr(std::is_integral_v<T>) {
+                type = INT;
+                return integer;
+            } else if constexpr(std::is_floating_point_v<T>) {
+                type = FLOATING;
+                return floating;
+            } else {
+                static_assert(std::is_same_v<T, bool>, "Unsupported type!");
+            }
+        }
+    }
+
+    template<class TP, bool invoke_err>
+    inline auto& ConstableValue::transform() {
+        using T = std::remove_const_t<TP>;
+        auto generator = [this]<class T1, class T2, class T3, Type t1, Type t2, Type t3>(T1& v1, T2& v2, T3& v3) -> auto& {
+            [[likely]] if(type == t1) {
+            } else if(type == t2) {
+                v1 = static_cast<T1>(v2);
+            } else if(type == t3) {
+                v1 = static_cast<T1>(v3);
+            } else if(type == STRING) {
+                std::from_chars_result result {};
+                v1 = ext::to_T<T1>(str::trim(data), &result);
+                if constexpr(invoke_err) {
+                    if(result.ec != std::errc()) {
+                        invoke_error(err_format_error, "Failed to format \"{}\".", data);
+                    }
+                }
+            }
+            type = t1;
+            data.clear();
+            return v1;
+        };
+
+        if constexpr(IsStringLike<T>) {
+            if(type != STRING) {
+                data = stringify();
+                type = STRING;
+            }
+            return data;
+        } else if constexpr(std::is_same_v<T, bool>) {
+            return generator.template operator()<bool, double, int64_t, BOOL, FLOATING, INT>(
+                boolean, floating, integer
+            );
+        } else if constexpr(std::is_integral_v<T>) {
+            return generator.template operator()<int64_t, double, bool, INT, FLOATING, BOOL>(
+                integer, floating, boolean
+            );
+        } else if constexpr(std::is_floating_point_v<T>) {
+            return generator.template operator()<double, int64_t, bool, FLOATING, INT, BOOL>(
+                floating, integer, boolean
+            );
+        } else {
+            static_assert(std::is_same_v<T, bool>, "Unsupported type!");
+        }
+    }
+
+    template<class T>
+    inline auto ConstableValue::expect() const {
+        auto make_value = [this]<class T1>(const T1& val) {
+            if constexpr(IsStringLike<T>) {
+                auto& buffer = stringify_buffer();
+                buffer = ext::to_string(val);
+                return std::make_pair(std::string_view(buffer), true);
+            } else {
+                return std::make_pair(T(val), true);
+            }
+        };
+
+        switch(type) {
+        case STRING: {
+            if constexpr(IsStringLike<T>) {
+                return std::make_pair(std::string_view(data), true);
+            } else {
+                std::from_chars_result result {};
+                auto v = ext::to_T<T>(data, &result);
+                return std::make_pair(v, result.ec == std::errc() && result.ptr == (data.data() + data.size()));
+            }
+        }
+        case INT:
+            return make_value(integer);
+        case FLOATING:
+            return make_value(floating);
+        default:
+            return make_value(boolean);
+        }
+    }
+
+    template<class T>
+    inline auto ConstableValue::to() const {
+        auto ret = expect<T>();
+        if(!ret.second) {
+            invoke_error(err_format_error, "Cannot format \"{}\" correctly!", stringify());
+        }
+        return ret.first;
+    }
+
+    template<class T>
+    inline ConstableValue& ConstableValue::set(T&& val) {
+        auto& ref = reconstruct<std::decay_t<T>>();
+        ref = std::forward<T>(val);
+        return *this;
+    }
+
+    inline bool ConstableValue::equals(const ConstableValue& left, const ConstableValue& right, CompareStrategy st) {
+        auto float_equal = [](double a, double b) {
+            if(a == b) return true;
+            double diff = std::abs(a - b);
+            if(diff < conf_value_compare_epsilon) return true;
+
+            return diff <= ((std::abs(a) < std::abs(b) ? std::abs(b) : std::abs(a))
+                * std::numeric_limits<double>::epsilon());
+        };
+
+        auto lt = left.get_type();
+        auto rt = right.get_type();
+        if(lt == rt) {
+            switch(lt) {
+            case Type::BOOL:
+                return left.boolean == right.boolean;
+            case Type::FLOATING:
+                if(st == CompareStrategy::Strict) return left.floating == right.floating;
+                return float_equal(left.floating, right.floating);
+            case Type::INT:
+                return left.integer == right.integer;
+            case Type::STRING:
+                return left.data == right.data;
+            }
+            panic_debug(true, "aaaa0ggmc,你这里忘记处理其他类型了!!!同时注意下面的代码也要同步你的类型更改");
+        }
+
+        if(st == CompareStrategy::Strict) return false;
+
+        auto is_numeric = [](Type t) {
+            return t == Type::FLOATING || t == Type::INT || t == Type::BOOL;
+        };
+
+        if(is_numeric(lt) && is_numeric(rt)) {
+            if(lt == Type::BOOL || rt == Type::BOOL) {
+                if(st == CompareStrategy::BoolStrict) {
+                    return float_equal(left.to<double>(), right.to<double>());
+                }
+                return left.to<bool>() == right.to<bool>();
+            }
+            return right.to<double>() == left.to<double>();
+        }
+
+        if(st == CompareStrategy::BoolStrict || st == CompareStrategy::Lesser) return false;
+
+        auto& plt = (lt == Type::STRING) ? right : left;
+        auto& prt = (lt == Type::STRING) ? left : right;
+        lt = plt.get_type();
+
+        if(lt == Type::FLOATING) {
+            auto db = prt.expect<double>();
+            if(!db.second) return false;
+            return float_equal(db.first, plt.floating);
+        } else if(lt == Type::INT) {
+            auto db = prt.expect<double>();
+            if(!db.second) return false;
+            return float_equal(db.first, static_cast<double>(plt.integer));
+        } else if(lt == Type::BOOL) {
+            std::string_view s = prt.data;
+            if(plt.boolean) {
+                return s == "true" || s == "TRUE" || s == "1" || s == "yes" || s == "YES";
+            }
+            return s == "false" || s == "FALSE" || s == "0" || s == "no" || s == "NO";
+        }
+
+        return false;
+    }
+
+    template<class V>
+    inline BasicAData<V>::Object::Object(std::pmr::memory_resource* __a)
+        : children(0, __a, __a)
+        , object_mapper(__a) {}
+
+    template<class V>
+    inline std::pair<BasicAData<V>*, size_t> BasicAData<V>::Object::ensure_node(std::string_view key) {
+        auto it = object_mapper.find(key);
+        if(it != object_mapper.end()) {
+            return std::make_pair(&children[it->second], it->second);
+        }
+
+        auto alloc = object_mapper.get_allocator();
+        size_t index = 0;
+        bool flag;
+        BasicAData<V>& node = children.try_next_with_index(flag, index, alloc.resource());
+        object_mapper.emplace(std::pmr::string(key, alloc), index);
+        return std::make_pair(&node, index);
+    }
+
+    template<class V>
+    inline bool BasicAData<V>::Object::remove(std::string_view name) {
+        auto it = object_mapper.find(name);
+        if(it == object_mapper.end()) {
+            return false;
+        }
+        children.remove(it->second);
+        object_mapper.erase(it);
+        return true;
+    }
+
+    template<class V>
+    inline bool BasicAData<V>::Object::rename(std::string_view old_name, std::string_view new_name) {
+        auto it = object_mapper.find(old_name);
+        if(it == object_mapper.end()) {
+            return false;
+        }
+        if(old_name == new_name) {
+            return true;
+        }
+        auto index = it->second;
+        object_mapper.erase(it);
+        object_mapper.emplace(
+            std::pmr::string(new_name, object_mapper.get_allocator()),
+            index
+        );
+        return true;
+    }
+
+    template<class V>
+    inline BasicAData<V>::Array::Array(std::pmr::memory_resource* __a)
+        : values(__a) {}
+
+    template<class V>
+    inline std::span<BasicAData<V>> BasicAData<V>::Array::ensure(size_t size) {
+        if(size <= values.size()) return {};
+        auto res = values.get_allocator().resource();
+        auto beg = values.size();
+
+        values.resize(size, BasicAData<V>(res));
+
+        return std::span(values.begin() + beg, values.end());
+    }
+
+    template<class V>
+    inline const BasicAData<V>* BasicAData<V>::jump_ptr(std::string_view path, bool err) const {
+        if(path.empty()) return this;
+        if(path[0] != '/') {
+            if(err) invoke_error(err_locate_error, "Failed to parse pointer which isn't begin with '/'!PATH:{}", path);
+            return nullptr;
+        }
+
+        auto splits = str::split(path, '/');
+        std::span<std::string_view> main = splits;
+        main = main.subspan(1);
+
+        const BasicAData<V>* current = this;
+        int index = 0;
+        value_type val(allocator);
+
+        while(index < main.size()) {
+            std::string_view s = main[index];
+            ++index;
+
+            val = s;
+
+            if(auto ss = val.template expect<int>(); ss.second && current->is_array()) {
+                auto* ptr = current->array().at_ptr(ss.first);
+                if(ptr) {
+                    current = ptr;
+                } else {
+                    if(err) {
+                        invoke_error(err_locate_error, "Locate failed when finding array index {}!", ss.first);
+                    }
+                    return nullptr;
+                }
+            } else if(current->is_object()) {
+                static thread_local std::string cast = "";
+                cast.clear();
+                for(size_t i = 0; i < s.size(); ++i) {
+                    if(s[i] == '~' && i + 1 < s.size()) {
+                        if(s[i + 1] == '0') {
+                            cast.push_back('~');
+                            ++i;
+                            continue;
+                        } else if(s[i + 1] == '1') {
+                            cast.push_back('/');
+                            ++i;
+                            continue;
+                        }
+                    }
+                    cast.push_back(s[i]);
+                }
+                auto* ptr = current->object().at_ptr(cast);
+                if(ptr) {
+                    current = ptr;
+                } else {
+                    if(err) {
+                        invoke_error(err_locate_error, "Locate failed when finding object name {}!", cast);
+                    }
+                    return nullptr;
+                }
+            } else {
+                if(err) {
+                    invoke_error(err_locate_error, "Locate failed for the lack of depth!");
+                }
+                return nullptr;
+            }
+        }
+        return current;
+    }
+
+    template<class V>
+    inline bool BasicAData<V>::equals(const BasicAData<V>& left, const BasicAData<V>& right, CompareStrategy st) {
+        struct Frame {
+            const BasicAData<V>* left;
+            const BasicAData<V>* right;
+        };
+        std::deque<Frame> frames;
+        frames.emplace_back(&left, &right);
+
+        while(!frames.empty()) {
+            Frame f = frames.back();
+            frames.pop_back();
+
+            auto lt = f.left->get_type();
+            auto rt = f.right->get_type();
+            if(lt != rt) {
+                return false;
+            }
+
+            switch(lt) {
+            case Type::TValue:
+                if(!f.left->value().equals(f.right->value(), st)) return false;
+                break;
+            case Type::TArray: {
+                auto& la = f.left->array();
+                auto& ra = f.right->array();
+
+                if(la.size() != ra.size()) return false;
+                for(size_t i = 0; i < la.size(); ++i) {
+                    frames.emplace_back(&la[i], &ra[i]);
+                }
+                break;
+            }
+            case Type::TObject: {
+                auto& lo = f.left->object();
+                auto& ro = f.right->object();
+
+                if(lo.size() != ro.size()) return false;
+                for(auto it : lo) {
+                    auto proxy = ro.find(it.first());
+                    if(proxy == ro.end()) {
+                        return false;
+                    }
+                    frames.emplace_back(&it.second(), &proxy.second());
+                }
+                break;
+            }
+            case Type::TNull:
+                break;
+            }
+        }
+        return true;
+    }
+
+    template<class V>
+    inline RefWrapper<typename BasicAData<V>::Array::container_t> BasicAData<V>::Array::safe_visit(std::ptrdiff_t index) {
         if(index < 0) index = values.size() + index;
         [[unlikely]] panic_if(index >= values.size(), "Array out of bounds!");
         return ref(values, index);
     }
 
-    inline AData& AData::Array::operator[](std::ptrdiff_t index) {
+    template<class V>
+    inline BasicAData<V>& BasicAData<V>::Array::operator[](std::ptrdiff_t index) {
         if(index < 0) index = values.size() + index;
         [[unlikely]] panic_if(index < 0 || index >= values.size() + conf_array_auto_expand, "Array out of bounds!");
-        if(index >= values.size()) values.resize(index + 1, AData(values.get_allocator().resource()));
+        if(index >= values.size()) values.resize(index + 1, BasicAData<V>(values.get_allocator().resource()));
         return values[index];
     }
 
-    inline const AData& AData::Array::operator[](std::ptrdiff_t index) const {
+    template<class V>
+    inline const BasicAData<V>& BasicAData<V>::Array::operator[](std::ptrdiff_t index) const {
         if(index < 0) index = values.size() + index;
         [[unlikely]] panic_if(index < 0 || index >= values.size(), "Array out of bounds!");
         return values[index];
     }
 
+    template<class V>
     template<class T> 
-    inline T& AData::set() {
+    inline T& BasicAData<V>::set() {
         if constexpr(std::is_same_v<T, std::monostate>) {
-            return data.emplace<std::monostate>();
-        } else return data.emplace<T>(allocator);
+            return data.template emplace<std::monostate>();
+        } else return data.template emplace<T>(allocator);
     }
-
+    
+    template<class V>
     template<typename Other, typename MergeFn>
-    AData& AData::__merge_impl(Other&& in, MergeFn&& fn) {
+    BasicAData<V>& BasicAData<V>::__merge_impl(Other&& in, MergeFn&& fn) {
         constexpr bool is_rvalue = !std::is_lvalue_reference_v<Other>;
-        using SourcePtr = std::conditional_t<is_rvalue, AData*, const AData*>;
+        using data_type = BasicAData<V>;
+        using SourcePtr = std::conditional_t<is_rvalue, data_type*, const data_type*>;
         
         struct Job {
-            AData* destination;
+            data_type* destination;
             SourcePtr source;
-            Job(AData* d, SourcePtr s) : destination(d), source(s) {}
+            Job(data_type* d, SourcePtr s) : destination(d), source(s) {}
         };
         
         struct ObjNext {
@@ -1093,7 +1687,7 @@ namespace alib5 {
                         if(it != dobj.end()) {
                             object_nexts.emplace_back(it.it->second, &mit.second());
                         } else {
-                            if constexpr (is_rvalue) {
+                            if constexpr(is_rvalue) {
                                 dobj[mit.first()] = std::move(mit.second());
                             } else {
                                 dobj[mit.first()] = mit.second();
@@ -1104,8 +1698,8 @@ namespace alib5 {
                         next_jobs.emplace_back(&dobj.children[i], n);
                     }
                 } else if(fn(*dest, *src) == MergeOperation::Override) {
-                    if constexpr (is_rvalue) {
-                        dest->rewrite(std::move(*const_cast<AData*>(src)));
+                    if constexpr(is_rvalue) {
+                        dest->rewrite(std::move(*const_cast<data_type*>(src)));
                     } else {
                         dest->rewrite(*src);
                     }
@@ -1118,18 +1712,19 @@ namespace alib5 {
         return *this;
     }
 
-    template<IsDiffFn<AData> DiffFn>
-    inline bool AData::diff(
-        const AData& in,
-        AData* added_or_modified,
-        AData* src_lack_of,
+    template<class V>
+    template<IsDiffFn<BasicAData<V>> DiffFn>
+    inline bool BasicAData<V>::diff(
+        const BasicAData<V>& in,
+        BasicAData<V>* added_or_modified,
+        BasicAData<V>* src_lack_of,
         DiffFn&& fn
     ) const {
         struct Job {
-            const AData* destination;
-            const AData* source;
-            AData* current_add;
-            AData* current_deleted;
+            const BasicAData<V>* destination;
+            const BasicAData<V>* source;
+            BasicAData<V>* current_add;
+            BasicAData<V>* current_deleted;
         };
         bool ret = false;
         std::vector<Job> jobs, next_jobs;
@@ -1145,11 +1740,11 @@ namespace alib5 {
                     auto& sobj = src->object();
 
                     if(cadd) {
-                        cadd->template set<dobject_t>();
+                        cadd->template set<typename BasicAData<V>::Object>();
                         cadd->object().children.reserve(sobj.size());
                     }
                     if(cdel) {
-                        cdel->template set<dobject_t>();
+                        cdel->template set<typename BasicAData<V>::Object>();
                         cdel->object().children.reserve(std::max(dobj.size(), sobj.size()));
                     }
 
@@ -1192,10 +1787,11 @@ namespace alib5 {
         return ret;
     }
 
-    template<bool PruneArray, IsPruneFn<AData> EmptyFn>
-    AData& AData::prune(EmptyFn&& fn) {
+    template<class V>
+    template<bool PruneArray, IsPruneFn<BasicAData<V>> EmptyFn>
+    BasicAData<V>& BasicAData<V>::prune(EmptyFn&& fn) {
         struct Frame {
-            AData* current;
+            BasicAData<V>* current;
             bool expanded {false};
         };
         std::deque<Frame> frames;

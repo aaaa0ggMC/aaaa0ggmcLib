@@ -2,9 +2,9 @@
 
 using namespace alib5;
 
-static std::pair<bool,Validator::Node::TypeRestrict> simp_validate_type(const AData & doc,Validator::Node & node){
+static std::pair<bool,Validator::Node::TypeRestrict> simp_validate_type(const dadata_t & doc,Validator::Node & node){
     using enum Validator::Node::TypeRestrict;
-    using enum AData::Type;
+    using enum dadata_t::Type;
     using enum Value::Type;
     Validator::Node::TypeRestrict data_type {RNone},ext {RNone};
     switch(doc.get_type()){
@@ -59,12 +59,12 @@ static std::string_view node_type_str(Validator::Node::TypeRestrict t){
     }
 }
 
-bool ALIB5_API Validator::validate(AData & doc,Result & result,bool ignore_missing){
+bool ALIB5_API Validator::validate(dadata_t & doc,Result & result,bool ignore_missing){
     // 注意,对于数组以及Object处理都要格外小心,因为都是线性存储,小心引用失效!
     // 好在DFS只会影响最深一层的引用
     // 因此安全系数也不是那么差
     struct Frame{
-        AData * d;
+        dadata_t * d;
         Node * n;
         std::string_view key { "" };
         int index { -1 };

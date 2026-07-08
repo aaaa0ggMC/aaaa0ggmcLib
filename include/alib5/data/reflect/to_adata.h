@@ -36,7 +36,7 @@ namespace alib5::detail {
         class LoggerType = std::nullptr_t,
         class InT
     > 
-    AData _to_adata(InT && base, LoggerType * debug_logger = nullptr);
+    dadata_t _to_adata(InT && base, LoggerType * debug_logger = nullptr);
 
 }
 
@@ -49,12 +49,12 @@ namespace alib5::detail {
         class LoggerType,
         class InT
     > 
-    inline AData _to_adata(InT && base, LoggerType * debug_logger) {
+    inline dadata_t _to_adata(InT && base, LoggerType * debug_logger) {
         using T = std::decay_t<InT>;
         constexpr std::meta::info t_info = ^^T;
         constexpr std::meta::access_context context = std::meta::access_context::unchecked();
 
-        AData root;
+        dadata_t root;
 
         constexpr auto target_is_direct = [&]() consteval -> bool {
             return requires {

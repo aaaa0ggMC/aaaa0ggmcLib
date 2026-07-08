@@ -119,7 +119,7 @@ namespace alib5 {
              * English: For a type, the default value is just the default value. For an array, the default value is the default value of its children.
              * Chinese: 对于类型,默认值就是默认值. 对于数组,默认值是子的默认值
              */
-            std::optional<AData> default_value;
+            std::optional<dadata_t> default_value;
             
             /**
              * @brief Permitted enumeration values.
@@ -302,7 +302,7 @@ namespace alib5 {
             }
         };
 
-        using ValidateMethod = std::function<bool(AData& node, std::pmr::vector<std::pmr::string>& args)>;
+        using ValidateMethod = std::function<bool(dadata_t& node, std::pmr::vector<std::pmr::string>& args)>;
 
         Node root;
         str::StringPool<std::pmr::string> activated_validates_str_pool;
@@ -312,7 +312,7 @@ namespace alib5 {
         Validator(std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE)
         : root(__a), activated_validates_str_pool(__a), allocator(__a) {}
 
-        Validator(const AData& d, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE)
+        Validator(const dadata_t& d, std::pmr::memory_resource* __a = ALIB5_DEFAULT_MEMORY_RESOURCE)
         : root(__a), activated_validates_str_pool(__a), allocator(__a) {
             from_adata(d);
         }
@@ -338,7 +338,7 @@ namespace alib5 {
          * English: Returns error information. If the length is 0, it means there is no error information.
          * Chinese: 返回错误信息,如果length为0表示没有错误信息
          */
-        std::pmr::string ALIB5_API from_adata(const AData& doc);
+        std::pmr::string ALIB5_API from_adata(const dadata_t& doc);
         
         /**
          * @brief Executes the validation of a target AData node using the loaded schema.
@@ -353,12 +353,12 @@ namespace alib5 {
          * English: Performs validation, returns false if fails. `ignore_missing` is suitable for C++ class validation, eliminating the need to rewrite classes & mappings, utilizing C++ constructor default value logic.
          * Chinese: 进行校验,returns false if fails. ignore_mussing 适用于C++类校验，从而不需要重新写类&映射，利用了C++构造函数默认值逻辑
          */
-        bool ALIB5_API validate(AData& doc, Result& result, bool ignore_missing = false);
+        bool ALIB5_API validate(dadata_t& doc, Result& result, bool ignore_missing = false);
 
         /**
          * @brief Helper wrapper that executes validation and returns the embedded Result object.
          */
-        inline Result validate(AData& doc, bool ignore_missing = false) {
+        inline Result validate(dadata_t& doc, bool ignore_missing = false) {
             Result r;
             validate(doc, r, ignore_missing);
             return r;

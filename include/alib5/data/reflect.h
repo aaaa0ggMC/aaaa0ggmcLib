@@ -32,8 +32,8 @@ namespace alib5 {
      * @param fill_data The data structure to populate.
      * @param root The source AData object.
      */
-    template<class InT> 
-    void from_adata(InT & fill_data, const AData & root);
+    template<class InT,class Data> 
+    void from_adata(InT & fill_data, const Data & root);
 
     /**
      * @brief Deserializes an AData object and returns a new C++ data structure.
@@ -42,8 +42,8 @@ namespace alib5 {
      * @param root The source AData object.
      * @return InT The populated data structure.
      */
-    template<class InT> 
-    InT from_adata(const AData & root);
+    template<class InT,class Data> 
+    InT from_adata(const Data & root);
 
     /**
      * @brief Serializes a C++ data structure into an AData object.
@@ -53,7 +53,7 @@ namespace alib5 {
      * @return AData The resulting AData object.
      */
     template<class InT> 
-    AData to_adata(InT && base);
+    dadata_t to_adata(InT && base);
 
     /**
      * @brief Generates an AData schema representation for a specific type.
@@ -62,7 +62,7 @@ namespace alib5 {
      * @return AData The generated schema object.
      */
     template<class T>
-    AData generate_schema();
+    dadata_t generate_schema();
 
 }
 
@@ -72,25 +72,25 @@ namespace alib5 {
 
 namespace alib5 {
 
-    template<class InT> 
-    inline void from_adata(InT & fill_data, const AData & root) {
+    template<class InT,class Data> 
+    inline void from_adata(InT & fill_data, const Data & root) {
         detail::_from_adata(fill_data, root);
     }
 
-    template<class InT> 
-    inline InT from_adata(const AData & root) {
+    template<class InT,class Data> 
+    inline InT from_adata(const Data & root) {
         InT object;
         detail::_from_adata(object, root);
         return object;
     }
 
     template<class InT> 
-    inline AData to_adata(InT && base) {
+    inline dadata_t to_adata(InT && base) {
         return detail::_to_adata(std::forward<InT>(base));
     }
 
     template<class T>
-    inline AData generate_schema() {
+    inline dadata_t generate_schema() {
         return detail::_generate_schema<T>();
     }
 
