@@ -222,11 +222,11 @@ namespace alib5::detail {
                                 }
                             }
 
-                            if(!cond) {
+                            if(cond) {
                                 root[name] = std::move(_to_adata<cfg, child_annotations.size(), array_annotations>(std::forward<InT>(base).[: item :], debug_logger));
-                                if constexpr(cfg.debug) if(debug_logger) [[likely]] *debug_logger << "Omitted      : " << true << "\n" << fls;
-                            } else {
                                 if constexpr(cfg.debug) if(debug_logger) [[likely]] *debug_logger << "Omitted      : " << false << "\n" << fls;
+                            } else {
+                                if constexpr(cfg.debug) if(debug_logger) [[likely]] *debug_logger << "Omitted      : " << true << "\n" << fls;
                             }
                         }
                     }

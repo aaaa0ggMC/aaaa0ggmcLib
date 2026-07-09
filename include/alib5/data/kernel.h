@@ -206,9 +206,10 @@ namespace alib5 {
             this->integer = other.integer; 
         }
 
-        CacheValue(CacheValue&& other) ALIB5_NOEXCEPT 
+        CacheValue(CacheValue&& other) ALIB5_NOEXCEPT
         : data(std::move(other.data)), data_dirt(other.data_dirt), type(other.type), integer(other.integer) {
-            other.data_dirt = true;
+            other.data_dirt = false;
+            other.type = STRING;
             other.data.clear();
         }
 
@@ -562,8 +563,8 @@ namespace alib5 {
                 auto& second() const { return cont.data[it->second]; }
 
                 auto operator*() const { return Proxy{it->first, cont.data[it->second]}; }
-                auto operator++() { return ++it; }
-                auto operator++(int) { return it++; }
+                auto& operator++() { ++it; return *this; }
+                auto operator++(int) { auto old = *this; ++it; return old; }
                 bool operator==(const ObjectIterator& other) const { return it == other.it; }
                 bool operator!=(const ObjectIterator& other) const { return it != other.it; }
                 auto operator->() const { return Proxy{it->first, cont.data[it->second]}; } 
