@@ -1,5 +1,5 @@
 /**
- * @file sort_wrapper_concepts.h
+ * @file wrapper_concepts.h
  * @author aaaa0ggmc (lovelinux@yslwd.eu.org)
  * @brief Wrappers and concepts for sorting algorithms / 包装器以及concept
  * @version 5.0
@@ -92,21 +92,13 @@ namespace alib5::algo::sort {
      * @brief Concept for forward iterators.
      */
     template<class T> 
-    concept IsForwardIterator = requires(T& t) {
-        ++t;
-        { t.next() } -> std::convertible_to<T>;
-    };
+    concept IsForwardIterator = std::forward_iterator<T>;
     
     /**
      * @brief Concept for bidirectional iterators.
      */
     template<class T> 
-    concept IsBiDirectionalIterator = requires(T& t) {
-        ++t;
-        --t;
-        { t.next() } -> std::convertible_to<T>;
-        { t.prev() } -> std::convertible_to<T>;
-    };
+    concept IsBiDirectionalIterator = std::bidirectional_iterator<T>;
 
     /**
      * @brief Generic iterator concept supporting forward, bidirectional, and random access patterns.
