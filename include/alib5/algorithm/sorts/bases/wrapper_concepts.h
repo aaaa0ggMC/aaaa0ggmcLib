@@ -11,7 +11,7 @@
 #ifndef ALIB5_ALGO_SORT_WP_CNT
 #define ALIB5_ALGO_SORT_WP_CNT
 
-#include <alib5/algorithm/sort_pos_iterator.h>
+#include <alib5/algorithm/sorts/bases/pos_iterator.h> 
 #include <concepts>
 #include <functional>
 #include <type_traits>
