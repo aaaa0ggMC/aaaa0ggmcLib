@@ -1,0 +1,4 @@
+Set Size , MillisecondsCost 
+2 , 1459.53
+4 , 3490.36
+8 , 5620.11

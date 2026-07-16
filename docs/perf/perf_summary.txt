@@ -1,0 +1,20 @@
+Sorting Algorithm Performance Summary
+========================================================================================================================
+
+                    Algorithm   Complexity  Min Size  Max Size  Min Time (ms)  Max Time (ms)  Growth Factor  Points
+                         bozo Pathological         2         8          0.904        179.552         198.72       3
+                       bubble        O(n²)         2     65536          0.281      68035.400      241780.71      16
+                     cocktail        O(n²)         2     65536          0.183      31869.200      174294.36      16
+                         comb        O(n²)         2  16777216          0.223      34846.400      156110.67      24
+                        gnome        O(n²)         2     65536          0.192     207736.000     1080012.06      16
+                    insertion        O(n²)         2     65536          0.199       8076.160       40488.30      16
+                     odd_even        O(n²)         2     65536          0.232      46493.700      200814.16      16
+       quick (PartitionHoare)   O(n log n)         2  16777216          0.180      50321.700      278832.29      24
+      quick (PartitionLomuto)   O(n log n)         2  16777216          0.266      48343.700      181770.57      24
+ quick (PartitionMedianThree)   O(n log n)         2  16777216          0.199      52025.500      260818.67      24
+                    selection        O(n²)         2     65536          0.254      30328.400      119363.21      16
+   shell (ShellGapType::Div2)   O(n log n)         2   1048576          0.179      19555.100      109072.10      20
+shell (ShellGapType::Hibbard)   O(n log n)         2   1048576          0.289       6415.270       22235.10      20
+  shell (ShellGapType::Knuth)   O(n log n)         2   1048576          0.218       3935.270       18013.11      20
+                        sleep Pathological         2         8       1459.530       5620.110           3.85       3
+                    std::sort   O(n log n)         2  16777216          0.227      41589.100      183391.25      24
