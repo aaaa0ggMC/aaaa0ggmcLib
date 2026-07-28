@@ -71,7 +71,9 @@ namespace alib5::detail {
             if(auto it = mapper.find(base); it != mapper.end()) {
                 root = it->second;
             } else {
-                // Still do nothing. (Original: 依旧啥都不干)
+#ifdef ALIB5_ENABLE_STRICT_REFLECTION
+                panicf("Unmappable enum value for type {}", std::meta::display_string_of(^^T));
+#endif
             }
         } else if constexpr(target_is_direct()) {
             root = std::forward<InT>(base);
@@ -205,12 +207,11 @@ namespace alib5::detail {
                                 if(debug_logger) [[likely]] *debug_logger << "Omitted      : " << omitted << "\n" << fls;
                             }
                         } else {
+                            auto&& forwarded_member = std::forward<InT>(base).[: item :];
                             bool cond = true;
-                            using Type = decltype(base.[: item :]);
-                            Type target = std::forward<Type>(base.[: item :]);
 
-                            if constexpr(detail::target_is_array< ^^target >() && need_omit) {
-                                if(!std::forward<InT>(base).[: item :].size()) cond = false;
+                            if constexpr(detail::target_is_array< ^^forwarded_member >() && need_omit) {
+                                if(!forwarded_member.size()) cond = false;
                             }
 
                             if constexpr(cfg.debug) {
@@ -223,7 +224,7 @@ namespace alib5::detail {
                             }
 
                             if(cond) {
-                                root[name] = std::move(_to_adata<cfg, child_annotations.size(), array_annotations>(std::forward<InT>(base).[: item :], debug_logger));
+                                root[name] = std::move(_to_adata<cfg, child_annotations.size(), array_annotations>(std::forward<decltype(forwarded_member)>(forwarded_member), debug_logger));
                                 if constexpr(cfg.debug) if(debug_logger) [[likely]] *debug_logger << "Omitted      : " << false << "\n" << fls;
                             } else {
                                 if constexpr(cfg.debug) if(debug_logger) [[likely]] *debug_logger << "Omitted      : " << true << "\n" << fls;

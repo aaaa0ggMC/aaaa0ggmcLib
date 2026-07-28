@@ -2,7 +2,7 @@
  * @file arequest.h
  * @brief Producer/consumer request queue with batch stealing and a CV-driven wait policy. / 生产者/消费者请求队列，支持批量窃取与条件变量等待。
  * @author aaaa0ggmc
- * @date 2026/06/18
+ * @date 2026/07/28
  * @version 5.0
  * @copyright Copyright(c) 2026
  */
@@ -21,7 +21,7 @@ namespace alib5{
     /// @brief Concept requiring @p T expose handle_request(Ctx) for use as a request type in RequestManager.
     template<class T,class Ctx>
     concept IsRequestType = requires(T & t,Ctx & tx){
-        t.handle_request(ctx);
+        t.handle_request(tx);
     };
 
     /**
@@ -104,8 +104,8 @@ namespace alib5{
                     {
                         std::scoped_lock locks(producer_mutex,consumer_mutex);
                         if(consumer_empty.load()){
-                            request_list_consumer = std::move(request_list_pending);
-                            consumer_batches = std::move(producer_batches);
+                            request_list_consumer.swap(request_list_pending);
+                            consumer_batches.swap(producer_batches);
 
                             request_list_pending.clear();
                             producer_batches.clear();

@@ -60,12 +60,15 @@ namespace alib5::detail {
         constexpr std::meta::access_context context = std::meta::access_context::unchecked(); 
         
         if constexpr(std::is_enum_v<std::decay_t<InT>>) {
+           panic_if(!root.is_value(), "Enum deserialization requires a value node");
            auto & mapper = get_enum_mapper<std::decay_t<InT>>();
 
            if(auto it = mapper.find(root.template to<std::string_view>()); it != mapper.end()) {
                 fill_data = it->second;
            } else {
-                // Do nothing for now. (Original: 啥都不做现在)
+#ifdef ALIB5_ENABLE_STRICT_REFLECTION
+                panicf("Unknown enum value '{}' for type {}", root.template to<std::string_view>(), std::meta::display_string_of(^^InT));
+#endif
            }
         } else if constexpr(IsNodeValue<InT>) {
             panic_if(
