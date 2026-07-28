@@ -126,6 +126,73 @@ def plot_efficient_comparison(df, out='perf_analysis_efficient.png'):
     print(f"Saved: {out}")
     plt.close()
 
+def plot_small_scale_excess(df, out='perf_analysis_small_excess.png'):
+    """
+    Focused small-scale analysis: subtract constant overhead (n=2 time) to see
+    the 'pure' sorting cost. Reveals whether quicksort's overhead makes it
+    slower than simple O(n²) sorts for tiny n.
+    """
+    small_df = df[df['SetSize'] <= 128].copy()
+
+    baseline = {}
+    for algo in df['Algorithm'].unique():
+        d = df[(df['Algorithm'] == algo) & (df['SetSize'] == 2)]
+        if len(d) > 0:
+            baseline[algo] = d['Milliseconds'].iloc[0]
+        else:
+            baseline[algo] = 0
+
+    small_df['ExcessTime'] = small_df.apply(
+        lambda r: max(r['Milliseconds'] - baseline.get(r['Algorithm'], 0), 0), axis=1
+    )
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 8))
+
+    plot_algos = sorted(small_df['Algorithm'].unique())
+    for i, algo in enumerate(plot_algos):
+        d = small_df[small_df['Algorithm'] == algo].sort_values('SetSize')
+        c = colors[i % len(colors)]
+        ax1.plot(d['SetSize'], d['Milliseconds'], marker='o', lw=2, ms=5,
+                 label=algo, color=c)
+        ax2.plot(d['SetSize'], d['ExcessTime'], marker='o', lw=2, ms=5,
+                 label=algo, color=c, linestyle='--')
+
+    for ax, title, ylabel in [
+        (ax1, 'Total Time (includes constant overhead)', 'Time (ms)'),
+        (ax2, 'Excess Time (total − baseline at n=2)', 'Excess Time (ms)'),
+    ]:
+        ax.set_xlabel('Set Size (n)', fontsize=11, fontweight='bold')
+        ax.set_ylabel(ylabel, fontsize=11, fontweight='bold')
+        ax.set_title(title, fontsize=12, fontweight='bold')
+        ax.legend(fontsize=7, loc='upper left')
+        ax.grid(True, alpha=0.3)
+        ax.set_xticks(sorted(small_df['SetSize'].unique()))
+        ax.set_xticklabels([str(x) for x in sorted(small_df['SetSize'].unique())],
+                           fontsize=8, rotation=45)
+
+    fig.suptitle('Small-Scale Analysis: Excluding Constant-Time Overhead',
+                 fontsize=14, fontweight='bold', y=1.02)
+    plt.tight_layout()
+    plt.savefig(out, dpi=300, bbox_inches='tight')
+    print(f"Saved: {out}")
+    plt.close()
+
+    # Print numerical comparison for small n
+    print("\n--- Small-Scale Excess Time Comparison (n ≤ 64) ---")
+    for n in [2, 4, 8, 16, 32, 64]:
+        print(f"\nn={n}:")
+        rows = []
+        for algo in plot_algos:
+            d = small_df[(small_df['Algorithm'] == algo) & (small_df['SetSize'] == n)]
+            if len(d) > 0:
+                row = d.iloc[0]
+                rows.append((algo, row['Milliseconds'], row['ExcessTime']))
+        rows.sort(key=lambda x: x[2])
+        print(f"  {'Algorithm':<30s} {'Total(ms)':<12s} {'Excess(ms)':<12s}")
+        print(f"  {'-'*54}")
+        for algo, total, excess in rows:
+            print(f"  {algo:<30s} {total:<12.4f} {excess:<12.4f}")
+
 def generate_summary(df, out='perf_summary.txt'):
     rows = []
     for algo in sorted(df['Algorithm'].unique()):
@@ -159,6 +226,7 @@ def main():
     plot_all_algorithms(df)
     plot_by_complexity(df)
     plot_efficient_comparison(df)
+    plot_small_scale_excess(df)
 
     print("\nGenerating summary...")
     summary = generate_summary(df)

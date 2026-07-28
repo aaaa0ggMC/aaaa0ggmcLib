@@ -222,9 +222,8 @@ void Logger::write_messages(std::span<LogMsg> msgs,bool autoflush){
         if(!t.m_nice_one)continue;
         
         t.build_on_consumer();
-        for(size_t i = 0;i < targets.size();++i){
-            // 不选择&了
-            auto target = targets[i];
+        for(size_t j = 0;j < targets.size();++j){
+            auto target = targets[j];
             if(!target->enabled)continue;
             target->write(t);
         }

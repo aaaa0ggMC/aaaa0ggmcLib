@@ -845,15 +845,9 @@ namespace alib5 {
             [[unlikely]] if(this == &val) return *this;
             [[unlikely]] if(get_type() != TNull && val.get_type() != TNull && get_type() != val.get_type()) {
                 panic_if(get_type() != val.get_type(), "Implicit type cast is forbidden.");
-                std::abort();
             }
             
-            if(val.allocator == this->allocator) {
-                decltype(data) safe_d = clone_data(val.data, allocator);
-                data = std::move(safe_d);
-            } else {
-                this->data = clone_data(val.data, allocator);
-            }
+            this->data = clone_data(val.data, allocator);
             return *this;
         }
 
@@ -1951,15 +1945,12 @@ namespace alib5 {
     template<class V1, class V2>
     inline void migrate(BasicAData<V2>& dest, BasicAData<V1>&& src){
         if constexpr (std::is_same_v<V1, V2>){
-            // 类型相同，使用移动语义的merge
             dest.__merge_impl(std::move(src), [](auto& d, auto& s){
                 return MergeOperation::Override;
             });
         } else {
-            // 类型不同，转换为const引用处理
             migrate(dest, static_cast<const BasicAData<V1>&>(src));
-            // 清空源数据
-            src.clear();
+            src.set_null();
         }
     }
     

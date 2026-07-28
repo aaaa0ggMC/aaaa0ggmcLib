@@ -157,21 +157,23 @@ bool ALIB5_API Validator::validate(dadata_t & doc,Result & result,bool ignore_mi
                 d->set<dobject_t>();
             }
         }
-        // 验证长度
-        if(!d->is_null() && (!d->is_value() || d->value().get_type() == Value::STRING)){
-            // 先验证枚举
-            if(n->enums.size() && n->enums.find(d->to<std::string_view>()) == n->enums.end()){
+        // 验证枚举（仅 value 类型）
+        if(d->is_value() && n->enums.size()){
+            auto val_str = d->value().to<std::string_view>();
+            if(n->enums.find(val_str) == n->enums.end()){
                 if(result.enable_string_errors)result.record_error(
                     "{} : Expected enum {},got \"{}\"",
                     get_vitree(),
                     n->enums,
-                    d->to<std::string_view>()
+                    val_str
                 );
                 success = false;
                 continue;
             }
+        }
 
-            // 这里就是数组/对象长度了
+        // 验证长度
+        if(!d->is_null() && (!d->is_value() || d->value().get_type() == Value::STRING)){
             bool has_min = n->min_length.to<std::string_view>() != "";
             bool has_max = n->max_length.to<std::string_view>() != "";
             
@@ -277,12 +279,11 @@ bool ALIB5_API Validator::validate(dadata_t & doc,Result & result,bool ignore_mi
                         arr[i] = *n->array_subs[i].default_value;
                     }else frames.emplace_back(&arr[i],&n->array_subs[i],"",i);
                 }
-            }else{
+            }else if(!n->array_subs.empty()){
                 push_vis();
                 ++depth;
                 auto & arr = d->array();
                 frames.emplace_back(nullptr,nullptr);
-                // 第二个作为每个child的"rule"
                 for(size_t i = 0;i < arr.size();++i){
                     if(arr[i].is_null() && n->array_subs[0].default_value){
                         arr[i] = *n->array_subs[0].default_value;
@@ -526,8 +527,8 @@ std::pmr::string Validator::from_adata(const AData & doc){
             if(current.view() == "")break;
         }
         /// 二次校验大小
-        if(restriction.max_length.to<const char*>() != "" &&
-            restriction.min_length.to<const char*>() != ""
+        if(restriction.max_length.to<std::string_view>() != "" &&
+            restriction.min_length.to<std::string_view>() != ""
         ){
             double min_v = restriction.min_length.to<double>();
             double max_v = restriction.max_length.to<double>();

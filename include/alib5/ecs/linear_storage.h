@@ -2,7 +2,7 @@
  * @file linear_storage.h
  * @brief Linear storage backed by a vector with a free list and monotonic bitset. / 线性存储类，目前使用vector，后期可以变成sparse_set啥的
  * @author aaaa0ggmc
- * @date 2026/06/24
+ * @date 2026/07/28
  * @version 5.0
  * @copyright Copyright(c) 2026
  */
@@ -327,9 +327,8 @@ namespace alib5::ecs::detail{
          */
         template<FuncForEachable<T> F> void for_each(F && func){
             size_t stop_at = size();
-            size_t processed = 0;
 
-            for(size_t i = 0;processed < stop_at && i < available_bits.mask.size();++i){
+            for(size_t i = 0;i < available_bits.mask.size();++i){
                 MonoticBitSet::store_t inverted_mask = available_bits.mask[i];
                 size_t base_index = i * MonoticBitSet::data_size;
                 if(base_index >= stop_at)break;

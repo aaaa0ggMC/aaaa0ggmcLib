@@ -60,9 +60,7 @@ namespace alib5::algo::sort {
     template<class Fn> 
     concept IsInjectFn = requires(Fn&& fn, std::size_t swap_prev, std::size_t swap_aft) {
         fn(swap_prev, swap_aft);
-    } || requires() {
-        std::is_same_v<std::decay_t<Fn>, std::nullptr_t>;
-    };
+    } || std::is_same_v<std::decay_t<Fn>, std::nullptr_t>;
     
     template<class T> struct is_inject_pos_iterator : std::false_type {};
     template<class I, class F> struct is_inject_pos_iterator<InjectPosIterator<I, F>> : std::true_type {};

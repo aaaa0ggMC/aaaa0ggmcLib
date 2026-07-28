@@ -54,22 +54,22 @@ namespace alib5::algo::search{
         if (pattern_size > data_size) {
             return data_end;
         }
+        if (pattern_size == 0) {
+            return data_begin;
+        }
 
-        {
-            size_t j = 0;
-            for (size_t i = 1; i < data_size;) {
-                while (*(data_begin + i) == *(pattern_begin + j)) {
-                    ++j;
-                    ++i;
-                    if (j >= pattern_size) return (data_begin + (i - pattern_size));
-                    if (i >= data_size) return data_end;
+        size_t j = 0;
+        for (size_t i = 0; i < data_size;) {
+            if (*(data_begin + i) == *(pattern_begin + j)) {
+                ++i;
+                ++j;
+                if (j == pattern_size) {
+                    return data_begin + (i - j);
                 }
-                while (j > 0 && *(data_begin + i) != *(pattern_begin + j)) {
-                    j = next[j - 1];
-                }
-                if (!j) {
-                    while (i < data_size && *(data_begin + i) != *pattern_begin) ++i;
-                }
+            } else if (j > 0) {
+                j = next[j - 1];
+            } else {
+                ++i;
             }
         }
         return data_end;

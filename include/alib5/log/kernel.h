@@ -4,7 +4,7 @@
  * 与日志有关的函数库
  * @author aaaa0ggmc
  * @last-date 2025/04/04
- * @date 2026/06/20
+ * @date 2026/07/28
  * @version 5.0
  * @copyright Copyright(C)2025
  ********************************
@@ -101,11 +101,21 @@ namespace alib5{
         /// @brief 输出对象缓存
         targets_t targets;
         /// @brief 输出对象查找池
-        std::unordered_map<std::string,RefWrapper<targets_t>> search_targets;
+        std::unordered_map<
+            std::string,
+            RefWrapper<targets_t>,
+            detail::TransparentStringHash,
+            detail::TransparentStringEqual
+        > search_targets;
         /// @brief 过滤器缓存
         filters_t filters;
         /// @brief 过滤对象查找池
-        std::unordered_map<std::string,RefWrapper<filters_t>> search_filters;
+        std::unordered_map<
+            std::string,
+            RefWrapper<filters_t>,
+            detail::TransparentStringHash,
+            detail::TransparentStringEqual
+        > search_filters;
 
         /// @brief 锁，目前还是相信std::mutex的力量
         std::mutex msg_lock;
@@ -160,7 +170,12 @@ namespace alib5{
         /// @return 操作是否成功
         template<CanAccessItem T> bool safe_remove_mod(
             std::string_view key,
-            std::unordered_map<std::string,RefWrapper<T>> & st,
+            std::unordered_map<
+                std::string,
+                RefWrapper<T>,
+                detail::TransparentStringHash,
+                detail::TransparentStringEqual
+            > & st,
             T & container
         );
 
@@ -214,11 +229,11 @@ namespace alib5{
         /// @brief 获取模块，请不要缓存内容！
         template<IsLogMod T> inline T* get_mod_raw(std::string_view name){
             if constexpr(IsLogTarget<T>){
-                auto i = search_targets.find(std::string(name));
+                auto i = search_targets.find(name);
                 if(i == search_targets.end())return nullptr;
                 return {dynamic_cast<T*>(i->second.get().get())};
             }else{
-                auto i = search_filters.find(std::string(name));
+                auto i = search_filters.find(name);
                 if(i == search_filters.end())return nullptr;
                 return {dynamic_cast<T*>(i->second.get().get())};
             }
@@ -226,11 +241,11 @@ namespace alib5{
         /// @brief 安全获取内容，但是使用比较繁琐，需要先使用has_data确认，然后ret.get()->XX使用
         template<IsLogMod T> auto get_mod_handle(std::string_view name){
             if constexpr(IsLogTarget<T>){
-                auto i = search_targets.find(std::string(name));
+                auto i = search_targets.find(name);
                 if(i == search_targets.end())return ref(targets,UINT32_MAX);
                 return i->second;
             }else{
-                auto i = search_filters.find(std::string(name));
+                auto i = search_filters.find(name);
                 if(i == search_filters.end())return ref(filters,UINT32_MAX);
                 return i->second;
             }
@@ -484,10 +499,15 @@ namespace alib5{
 
     template<CanAccessItem T> inline bool Logger::safe_remove_mod(
         std::string_view key,
-        std::unordered_map<std::string,RefWrapper<T>> & st,
+        std::unordered_map<
+            std::string,
+            RefWrapper<T>,
+            detail::TransparentStringHash,
+            detail::TransparentStringEqual
+        > & st,
         T & container
     ){
-        auto it = st.find(std::string(key));
+        auto it = st.find(key);
         if(it == st.end()){
             return false;
         }
@@ -496,8 +516,8 @@ namespace alib5{
         size_t cached_index = it->second.index;
         st.erase(it);
         // 后面的index都要减少一个
-        for(auto& [key,val] : st){
-            if(val.index > cached_index) val.index--;
+        for(auto& [k,v] : st){
+            if(v.index > cached_index) v.index--;
         }
         container.erase(container.begin() + cached_index);
         return true;
@@ -542,7 +562,7 @@ namespace alib5{
         std::lock_guard<std::mutex> lock(mod_lock);
         if constexpr(std::is_base_of_v<LogTarget,T>){
             /// @todo 懒得理你
-            auto it = search_targets.find(std::string(name));
+            auto it = search_targets.find(name);
             if(it == search_targets.end()){
                 targets.push_back(ptr);
                 search_targets.emplace(name,ref(targets,targets.size() - 1));
@@ -550,7 +570,7 @@ namespace alib5{
                 it->second = ptr;
             }
         }else{
-            auto it = search_filters.find(std::string(name));
+            auto it = search_filters.find(name);
             if(it == search_filters.end()){
                 filters.push_back(ptr);
                 search_filters.emplace(name,ref(filters,filters.size() - 1));
@@ -562,11 +582,11 @@ namespace alib5{
     }
 
     template<class T> inline bool Logger::remove_mod(std::string_view name){
-        static_assert(std::is_same_v<LogTarget,T> || std::is_same_v<LogFilter,T>,
-            "T must be one of LogTarget or LogFilter!");
+        static_assert(std::is_base_of_v<LogTarget,T> || std::is_base_of_v<LogFilter,T>,
+            "T must be the derived class of LogTarget or LogFilter!");
 
         std::lock_guard<std::mutex> lock(mod_lock);
-        if constexpr(std::is_same_v<LogTarget,T>){
+        if constexpr(std::is_base_of_v<LogTarget,T>){
             return safe_remove_mod(name,search_targets,targets);
         }else{
             return safe_remove_mod(name,search_filters,filters);

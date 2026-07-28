@@ -2,7 +2,7 @@
  * @file entity_manager.h
  * @brief Entity manager maintaining entities, component pools and dependency injection. / 实体管理
  * @author aaaa0ggmc
- * @date 2026/06/18
+ * @date 2026/07/28
  * @version 5.0
  * @copyright Copyright(c) 2026
  */
@@ -221,7 +221,7 @@ namespace alib5::ecs{
             size_t index;
             ComponentPool<T> * p;
             get_component_impl<T>(e,index,p);
-            if(p && index >= 0)return ref((p->data),index);
+            if(p && index != std::numeric_limits<size_t>::max())return ref((p->data),index);
             else return std::nullopt;
         }
 
