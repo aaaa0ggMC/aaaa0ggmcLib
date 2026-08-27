@@ -310,10 +310,12 @@ namespace alib6::detail::refl {
             return has_trait<attr::Trait::SeriOmitEmpty>();
         }
 
-        static constexpr bool matches_name(std::string_view candidate) noexcept {
-            if (candidate == get_name() || candidate == std::meta::identifier_of(Member)) {
-                return true;
-            }
+        static constexpr bool has_rename() noexcept {
+            return has_trait<attr::Trait::Rename>();
+        }
+
+        static constexpr bool matches_alias(std::string_view candidate) noexcept {
+            if (candidate.empty()) return false;
             static constexpr auto annos = std::define_static_array(std::meta::annotations_of(Member));
             template for (constexpr auto anno : annos) {
                 constexpr auto anno_type = std::meta::type_of(anno);
@@ -330,16 +332,56 @@ namespace alib6::detail::refl {
             return false;
         }
 
+        static constexpr bool matches_name(std::string_view candidate) noexcept {
+            if (candidate == get_name() || candidate == std::meta::identifier_of(Member)) {
+                return true;
+            }
+            return matches_alias(candidate);
+        }
+
+        /**
+         * @brief 计算当前目标成员与源成员的匹配精准度得分 (Score)
+         * 优先级: Alias (3) > Rename (2) > Origin (1) > No match (0)
+         */
+        template<std::meta::info OtherMember>
+        static consteval int match_score() noexcept {
+            using OtherInspector = MemberAnnotationInspector<OtherMember>;
+
+            constexpr auto tgt_origin = std::meta::identifier_of(Member);
+            constexpr auto tgt_rename = has_rename() ? get_name() : std::string_view{};
+            constexpr auto src_origin = std::meta::identifier_of(OtherMember);
+            constexpr auto src_rename = OtherInspector::has_rename() ? OtherInspector::get_name() : std::string_view{};
+
+            // 1. Alias 匹配 (优先级最高: Score 3)
+            if (OtherInspector::matches_alias(tgt_origin) || (!tgt_rename.empty() && OtherInspector::matches_alias(tgt_rename))) {
+                return 3;
+            }
+            if (matches_alias(src_origin) || (!src_rename.empty() && matches_alias(src_rename))) {
+                return 3;
+            }
+
+            // 2. Rename 匹配 (优先级第二: Score 2)
+            if (!tgt_rename.empty() && !src_rename.empty() && tgt_rename == src_rename) {
+                return 2;
+            }
+            if (!src_rename.empty() && src_rename == tgt_origin) {
+                return 2;
+            }
+            if (!tgt_rename.empty() && tgt_rename == src_origin) {
+                return 2;
+            }
+
+            // 3. Origin 标识符原始名称匹配 (优先级基础: Score 1)
+            if (tgt_origin == src_origin) {
+                return 1;
+            }
+
+            return 0;
+        }
+
         template<std::meta::info OtherMember>
         static consteval bool matches_member() noexcept {
-            using OtherInspector = MemberAnnotationInspector<OtherMember>;
-            if (matches_name(OtherInspector::get_name()) || matches_name(std::meta::identifier_of(OtherMember))) {
-                return true;
-            }
-            if (OtherInspector::matches_name(get_name()) || OtherInspector::matches_name(std::meta::identifier_of(Member))) {
-                return true;
-            }
-            return false;
+            return match_score<OtherMember>() > 0;
         }
     };
 
@@ -456,14 +498,32 @@ export namespace alib6 {
             template for (constexpr auto m_tgt : tgt_members) {
                 using TgtInspector = detail::refl::MemberAnnotationInspector<m_tgt>;
                 if constexpr (!TgtInspector::is_deseri_skip()) {
-                    template for (constexpr auto m_src : src_members) {
-                        using SrcInspector = detail::refl::MemberAnnotationInspector<m_src>;
-                        if constexpr (!SrcInspector::is_seri_skip()) {
-                            if constexpr (TgtInspector::template matches_member<m_src>()) {
-                                if constexpr (std::is_assignable_v<decltype((target.[: m_tgt :])), decltype((source.[: m_src :]))>) {
-                                    target.[: m_tgt :] = source.[: m_src :];
-                                } else if constexpr (std::is_constructible_v<std::decay_t<decltype(target.[: m_tgt :])>, decltype(source.[: m_src :])>) {
-                                    target.[: m_tgt :] = std::decay_t<decltype(target.[: m_tgt :])>(source.[: m_src :]);
+                    constexpr int max_score = []() consteval {
+                        int highest = 0;
+                        template for (constexpr auto m_src : src_members) {
+                            using SrcInspector = detail::refl::MemberAnnotationInspector<m_src>;
+                            if constexpr (!SrcInspector::is_seri_skip()) {
+                                constexpr int sc = TgtInspector::template match_score<m_src>();
+                                if (sc > highest) highest = sc;
+                            }
+                        }
+                        return highest;
+                    }();
+
+                    if constexpr (max_score > 0) {
+                        bool assigned = false;
+                        template for (constexpr auto m_src : src_members) {
+                            using SrcInspector = detail::refl::MemberAnnotationInspector<m_src>;
+                            if constexpr (!SrcInspector::is_seri_skip()) {
+                                constexpr int sc = TgtInspector::template match_score<m_src>();
+                                if (sc == max_score && !assigned) {
+                                    if constexpr (std::is_assignable_v<decltype((target.[: m_tgt :])), decltype((source.[: m_src :]))>) {
+                                        target.[: m_tgt :] = source.[: m_src :];
+                                        assigned = true;
+                                    } else if constexpr (std::is_constructible_v<std::decay_t<decltype(target.[: m_tgt :])>, decltype(source.[: m_src :])>) {
+                                        target.[: m_tgt :] = std::decay_t<decltype(target.[: m_tgt :])>(source.[: m_src :]);
+                                        assigned = true;
+                                    }
                                 }
                             }
                         }

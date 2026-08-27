@@ -341,3 +341,39 @@ TEST(ReflectTest, PMRMemoryIsolationAndLeakCheck) {
     EXPECT_FALSE(tracker.has_leak());
     EXPECT_EQ(tracker.live_bytes(), 0);
 }
+
+struct PriorityTestSource {
+    // 基础同名 (Origin: score 1)
+    std::string title{"origin_title"};
+
+    // 重命名 (Rename: score 2)
+    [[=alib6::attr::rename<"tag">{}]]
+    std::string custom_tag{"rename_tag"};
+
+    // 别名指向 title (Alias: score 3)
+    [[=alib6::attr::alias<"title">{}]]
+    std::string alias_title{"alias_title_winner"};
+
+    // 别名指向 tag (Alias: score 3)
+    [[=alib6::attr::alias<"tag">{}]]
+    std::string alias_tag{"alias_tag_winner"};
+};
+
+struct PriorityTestTarget {
+    std::string title{""};
+    std::string tag{""};
+};
+
+TEST(ReflectTest, FillMatchingPriorityAliasOverRenameOverOrigin) {
+    PriorityTestSource src;
+    PriorityTestTarget tgt;
+
+    alib6::fill_matching(tgt, src);
+
+    // 验证 alias (Score 3) 胜过 origin (Score 1)
+    EXPECT_EQ(tgt.title, "alias_title_winner");
+
+    // 验证 alias (Score 3) 胜过 rename (Score 2)
+    EXPECT_EQ(tgt.tag, "alias_tag_winner");
+}
+
