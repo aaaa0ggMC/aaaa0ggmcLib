@@ -503,8 +503,13 @@ export namespace alib6 {
                         template for (constexpr auto m_src : src_members) {
                             using SrcInspector = detail::refl::MemberAnnotationInspector<m_src>;
                             if constexpr (!SrcInspector::is_seri_skip()) {
-                                constexpr int sc = TgtInspector::template match_score<m_src>();
-                                if (sc > highest) highest = sc;
+                                using TgtT = [: std::meta::type_of(m_tgt) :];
+                                using SrcT = [: std::meta::type_of(m_src) :];
+                                if constexpr (std::is_assignable_v<TgtT&, const SrcT&> ||
+                                              std::is_constructible_v<std::decay_t<TgtT>, const SrcT&>) {
+                                    constexpr int sc = TgtInspector::template match_score<m_src>();
+                                    if (sc > highest) highest = sc;
+                                }
                             }
                         }
                         return highest;
@@ -515,14 +520,19 @@ export namespace alib6 {
                         template for (constexpr auto m_src : src_members) {
                             using SrcInspector = detail::refl::MemberAnnotationInspector<m_src>;
                             if constexpr (!SrcInspector::is_seri_skip()) {
-                                constexpr int sc = TgtInspector::template match_score<m_src>();
-                                if (sc == max_score && !assigned) {
-                                    if constexpr (std::is_assignable_v<decltype((target.[: m_tgt :])), decltype((source.[: m_src :]))>) {
-                                        target.[: m_tgt :] = source.[: m_src :];
-                                        assigned = true;
-                                    } else if constexpr (std::is_constructible_v<std::decay_t<decltype(target.[: m_tgt :])>, decltype(source.[: m_src :])>) {
-                                        target.[: m_tgt :] = std::decay_t<decltype(target.[: m_tgt :])>(source.[: m_src :]);
-                                        assigned = true;
+                                using TgtT = [: std::meta::type_of(m_tgt) :];
+                                using SrcT = [: std::meta::type_of(m_src) :];
+                                if constexpr (std::is_assignable_v<TgtT&, const SrcT&> ||
+                                              std::is_constructible_v<std::decay_t<TgtT>, const SrcT&>) {
+                                    constexpr int sc = TgtInspector::template match_score<m_src>();
+                                    if (sc == max_score && !assigned) {
+                                        if constexpr (std::is_assignable_v<TgtT&, const SrcT&>) {
+                                            target.[: m_tgt :] = source.[: m_src :];
+                                            assigned = true;
+                                        } else if constexpr (std::is_constructible_v<std::decay_t<TgtT>, const SrcT&>) {
+                                            target.[: m_tgt :] = std::decay_t<TgtT>(source.[: m_src :]);
+                                            assigned = true;
+                                        }
                                     }
                                 }
                             }

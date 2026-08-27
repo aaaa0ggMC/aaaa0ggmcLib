@@ -377,3 +377,26 @@ TEST(ReflectTest, FillMatchingPriorityAliasOverRenameOverOrigin) {
     EXPECT_EQ(tgt.tag, "alias_tag_winner");
 }
 
+struct TypeMismatchSource {
+    std::string count{"not_a_number"}; // 同名但是 string
+    int width{1920};                   // 兼容类型
+};
+
+struct TypeMismatchTarget {
+    int count{999};                     // 默认 999，因类型不可赋值安全跳过
+    int width{0};                       // 匹配并成功赋值为 1920
+};
+
+TEST(ReflectTest, FillMatchingTypeIncompatibilityGracefulSkip) {
+    TypeMismatchSource src;
+    TypeMismatchTarget tgt;
+
+    alib6::fill_matching(tgt, src);
+
+    // count 因类型不兼容 (= 赋值不支持) 被安全跳过，保留原本默认值 999
+    EXPECT_EQ(tgt.count, 999);
+    // width 类型兼容，正常赋值 1920
+    EXPECT_EQ(tgt.width, 1920);
+}
+
+
