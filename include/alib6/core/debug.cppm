@@ -11,6 +11,7 @@
 module;
 #include <alib6/config.h>
 #include <cstdio>
+#include <version>
 
 export module alib6.core:debug;
 import std;
@@ -92,7 +93,7 @@ Stack    :
         std::println(stderr, "{}", final_str);
 #endif
 
-#ifdef ALIB6_FLAG_USE_EXCEPTIONS
+#if defined(ALIB6_FLAG_USE_EXCEPTIONS)
         throw std::runtime_error(final_str);
 #else
         std::abort();

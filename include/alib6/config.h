@@ -9,6 +9,7 @@
  * 
  */
 #pragma once
+#include <version>
 
 #ifndef ALIB6_STR_FAILED_TO_FORMAT
 #define ALIB6_STR_FAILED_TO_FORMAT "Failed to format target "

@@ -164,12 +164,12 @@ export namespace alib6{
 #endif
         }
 
-        void __invoke_error(std::string_view str, CodeWithLocation cc){
+        inline void __invoke_error(std::string_view str, CodeWithLocation cc){
 #if defined(ALIB6_FLAG_ERROR_EXCEPTION)
                 throw std::runtime_error(std::string(str));
 #elif defined(ALIB6_FLAG_ERROR_PANIC)
-                panicf(
-                    PanicFormat("Message: {}\nCode: {}\n", cc.location),
+                vpanicf(
+                    "{}\nCode: {}", cc.location,
                     str, cc.code
                 );
 #else
@@ -188,7 +188,7 @@ export namespace alib6{
         }
 
         /// 支持右值 pmr::string 零拷贝移动
-        void report(pmr::string && str, CodeWithLocation cc = CodeWithLocation()){
+        inline void report(pmr::string && str, CodeWithLocation cc = CodeWithLocation()){
             __report(std::move(str), cc);
         }
         
@@ -213,6 +213,10 @@ export namespace alib6{
 
                 __report(std::move(str), cc);
             }
+        }
+
+        operator bool() noexcept {
+            return err || __need_invoke_error();
         }
 
         template<class... Args> void report(
