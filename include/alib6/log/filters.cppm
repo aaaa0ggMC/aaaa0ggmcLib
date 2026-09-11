@@ -18,7 +18,8 @@ import :config;
 import :msg;
 import :mod;
 
-export namespace alib6::log {
+export namespace alib6::lof {
+    using namespace alib6::log;
 
     /**
      * @brief 自定义级别过滤器 (委托给用户函数进行生产端快速剪枝)
@@ -54,4 +55,10 @@ export namespace alib6::log {
         }
     };
 
+} // namespace alib6::lof
+
+export namespace alib6::log {
+    namespace lof = alib6::lof;
+    using alib6::lof::CustomLevelBlocker;
+    using alib6::lof::MinLevelFilter;
 } // namespace alib6::log

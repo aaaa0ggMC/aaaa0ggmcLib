@@ -861,4 +861,9 @@ export namespace alib6 {
         return root;
     }
 
+    template<class T>
+    inline AData gen_schema(memory_resource* mem = get_default_resource()) {
+        return generate_schema<T>(mem);
+    }
+
 } // namespace alib6

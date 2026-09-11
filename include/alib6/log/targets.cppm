@@ -33,7 +33,8 @@ import :manip;
 
 namespace pmr = std::pmr;
 
-export namespace alib6::log {
+export namespace alib6::lot {
+    using namespace alib6::log;
 
     /// @brief 终端前景色与背景色枚举
     enum class Color : u8 {
@@ -427,4 +428,22 @@ export namespace alib6::log {
         }
     };
 
+} // namespace alib6::lot
+
+export namespace alib6::log {
+    namespace lot = alib6::lot;
+
+    using alib6::lot::Color;
+    using alib6::lot::Style;
+    using alib6::lot::color;
+    using alib6::lot::combine_color_payload;
+    using alib6::lot::merge_color_tag;
+    using alib6::lot::compact_color_tags;
+    using alib6::lot::ConsoleConfig;
+    using alib6::lot::Console;
+    using alib6::lot::File;
+    using alib6::lot::RotateFileConfig;
+    using alib6::lot::RotateFile;
+    using alib6::lot::ConsoleBuffer;
+    using alib6::lot::SyncConsoleBuffer;
 } // namespace alib6::log

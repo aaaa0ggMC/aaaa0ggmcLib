@@ -1189,6 +1189,12 @@ export namespace alib6::data {
             return load_from_memory(content, std::forward<DataPolicy>(parser));
         }
 
+        template<class DataPolicy = JSON>
+            requires IsDataPolicy<DataPolicy, BasicAData>
+        auto load_from_entry(const alib6::io::FileEntry& entry, DataPolicy&& parser = DataPolicy()) {
+            return load_from_memory(entry.read(), std::forward<DataPolicy>(parser));
+        }
+
         template<class Dumper = JSON, class T>
             requires IsDataPolicy<Dumper, BasicAData>
         auto dump(T& target, Dumper&& dumper = Dumper()) const {
@@ -1213,6 +1219,13 @@ export namespace alib6::data {
 
         template<class Dumper = JSON>
             requires IsDataPolicy<Dumper, BasicAData>
+        auto dump_to_entry(const alib6::io::FileEntry& entry, Dumper&& dumper = Dumper(), memory_resource* mem = nullptr) const {
+            auto s = dump_to_string(std::forward<Dumper>(dumper), mem);
+            return entry.write_all(s);
+        }
+
+        template<class Dumper = JSON>
+            requires IsDataPolicy<Dumper, BasicAData>
         [[nodiscard]] pmr::string str(Dumper&& dmp = Dumper()) const {
             return dump_to_string(std::forward<Dumper>(dmp));
         }
@@ -1226,7 +1239,7 @@ export namespace alib6::data {
 
     using AData = BasicAData<>;
 
-    template<class Dumper, class V = Value>
+    template<class Dumper = JSON, class V = Value>
     inline BasicAData<V> adata_from_memory(std::string_view mem, memory_resource* mem_res = get_default_resource()) {
         BasicAData<V> data(mem_res);
         data.template load_from_memory<Dumper>(mem);

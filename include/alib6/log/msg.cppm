@@ -129,15 +129,9 @@ export namespace alib6::log {
             }
 
             if (cfg.gen_time) {
-                #ifdef __linux__
-                timespec ts{};
-                clock_gettime(CLOCK_REALTIME_COARSE, &ts);
-                timestamp = static_cast<double>(ts.tv_sec) * 1000.0 + static_cast<double>(ts.tv_nsec) / 1'000'000.0;
-                #else
                 auto now = std::chrono::steady_clock::now();
                 auto us = std::chrono::duration_cast<std::chrono::microseconds>(now - start_tp).count();
                 timestamp = static_cast<double>(us) / 1000.0;
-                #endif
             }
         }
 

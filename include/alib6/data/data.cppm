@@ -22,6 +22,8 @@ export import :reflect;
 export import :translator;
 
 export namespace alib6 {
+    namespace data = alib6::data;
+
     using Value = alib6::data::Value;
     using CacheValue = alib6::data::Value;
     using AData = alib6::data::AData;
@@ -42,4 +44,12 @@ export namespace alib6 {
     using Translator = alib6::data::Translator;
 
     namespace attr = alib6::attr;
+}
+
+export namespace alib6::data {
+    using alib6::to_adata;
+    using alib6::from_adata;
+    using alib6::fill_matching;
+    using alib6::gen_schema;
+    using alib6::generate_schema;
 }

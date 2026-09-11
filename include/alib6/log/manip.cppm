@@ -212,6 +212,7 @@ export namespace alib6::log {
         std::string_view fmt_str;
         explicit constexpr log_tfmt(std::string_view s = "") noexcept : fmt_str(s) {}
     };
+    using tfmt = log_tfmt;
 
     /// @brief 单条日志动态配置修饰器
     struct log_header {

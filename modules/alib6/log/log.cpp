@@ -212,6 +212,11 @@ namespace alib6::log {
         }
     }
 
+} // namespace alib6::log
+
+namespace alib6::lot {
+    using namespace alib6::log;
+
     // ==================== Console 彩色渲染实现 ====================
 
     static void render_color_console(std::string& s_buffer, u16 category_id, ConsoleConfig& cfg, LogMsg& msg) {
@@ -372,6 +377,10 @@ namespace alib6::log {
 
     template struct ConsoleBuffer<std::string>;
     template struct SyncConsoleBuffer<std::string>;
+
+} // namespace alib6::lot
+
+namespace alib6::log {
 
     // ==================== Logger 核心实现 ====================
 

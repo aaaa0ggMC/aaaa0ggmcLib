@@ -36,3 +36,11 @@ export namespace alib6::time {
     [[nodiscard]] pmr::string format_duration(i64 total_secs, memory_resource* mem = get_default_resource());
 
 } // namespace alib6::time
+
+export namespace alib6::misc {
+    using alib6::time::normalize_elapse;
+}
+
+export namespace alib6 {
+    namespace misc = alib6::misc;
+}
