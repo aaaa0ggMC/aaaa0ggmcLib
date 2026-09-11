@@ -1176,26 +1176,26 @@ export namespace alib6::data {
             return *this;
         }
 
-        template<class DataPolicy>
+        template<class DataPolicy = JSON>
             requires IsDataPolicy<DataPolicy, BasicAData>
         auto load_from_memory(std::string_view mem, DataPolicy&& parser = DataPolicy()) {
             return std::forward<DataPolicy>(parser).parse(mem, *this);
         }
 
-        template<class DataPolicy>
+        template<class DataPolicy = JSON>
             requires IsDataPolicy<DataPolicy, BasicAData>
         auto load_from_file(std::string_view path, DataPolicy&& parser = DataPolicy(), ErrorWrapper err = {}) {
             auto content = alib6::io::read_all(path, 0, allocator, err);
             return load_from_memory(content, std::forward<DataPolicy>(parser));
         }
 
-        template<class Dumper, class T>
+        template<class Dumper = JSON, class T>
             requires IsDataPolicy<Dumper, BasicAData>
         auto dump(T& target, Dumper&& dumper = Dumper()) const {
             return std::forward<Dumper>(dumper).dump(target, *this);
         }
 
-        template<class Dumper>
+        template<class Dumper = JSON>
             requires IsDataPolicy<Dumper, BasicAData>
         [[nodiscard]] pmr::string dump_to_string(Dumper&& dumper = Dumper(), memory_resource* mem = nullptr) const {
             if (!mem) mem = allocator;
@@ -1204,20 +1204,20 @@ export namespace alib6::data {
             return str;
         }
 
-        template<class Dumper>
+        template<class Dumper = JSON>
             requires IsDataPolicy<Dumper, BasicAData>
         void dump_to_file(std::string_view file_path, Dumper&& dumper = Dumper(), memory_resource* mem = nullptr, ErrorWrapper err = {}) const {
             auto s = dump_to_string(std::forward<Dumper>(dumper), mem);
             alib6::io::write_all(file_path, s, err);
         }
 
-        template<class Dumper>
+        template<class Dumper = JSON>
             requires IsDataPolicy<Dumper, BasicAData>
         [[nodiscard]] pmr::string str(Dumper&& dmp = Dumper()) const {
             return dump_to_string(std::forward<Dumper>(dmp));
         }
 
-        template<class STR, class Dumper>
+        template<class STR, class Dumper = JSON>
             requires IsDataPolicy<Dumper, BasicAData>
         void write_to_log(STR& s) const {
             dump(s, Dumper());

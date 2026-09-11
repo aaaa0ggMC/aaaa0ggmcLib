@@ -48,6 +48,10 @@ namespace {
         SubConfig endpoint{};
     };
 
+    struct ADataEnvelope {
+        alib6::AData content;
+    };
+
     struct [[=alib6::attr::schema::extra<"MIN_KEYS 1">{}]] ServerCluster {
         std::string cluster_name{"APAC-1"};
         [[=alib6::attr::schema::range{1.0, 65535.0}]]
@@ -125,6 +129,49 @@ TEST(ReflectTest, BasicStructSerializationAndDeserialization) {
 
     EXPECT_FALSE(tracker.has_leak());
     EXPECT_EQ(tracker.live_bytes(), 0);
+}
+
+TEST(ReflectTest, ADataPassThroughAndNestedMember) {
+    alib6::test::CountingMemoryResource source_memory;
+    alib6::test::CountingMemoryResource destination_memory;
+
+    {
+        alib6::AData source(&source_memory);
+        source["name"] = "debug_messenger";
+        source["succeeded"] = true;
+
+        auto copied = alib6::to_adata(source, &destination_memory);
+        EXPECT_EQ(copied.get_allocator(), &destination_memory);
+        EXPECT_EQ(copied["name"].to<std::string_view>(), "debug_messenger");
+        EXPECT_TRUE(copied["succeeded"].to<bool>());
+
+        alib6::AData restored(&destination_memory);
+        EXPECT_TRUE(alib6::from_adata(restored, source));
+        EXPECT_EQ(restored.get_allocator(), &destination_memory);
+        EXPECT_EQ(restored["name"].to<std::string_view>(), "debug_messenger");
+
+        ADataEnvelope envelope;
+        envelope.content["stage"] = "create_instance";
+        envelope.content["vk_result"] = 0;
+
+        auto document = alib6::to_adata(envelope, &destination_memory);
+        EXPECT_EQ(
+            document["content"]["stage"].to<std::string_view>(),
+            "create_instance"
+        );
+        EXPECT_NE(document.str().find("create_instance"), std::string_view::npos);
+
+        ADataEnvelope restored_envelope;
+        EXPECT_TRUE(alib6::from_adata(restored_envelope, document));
+        EXPECT_EQ(
+            restored_envelope.content["stage"].to<std::string_view>(),
+            "create_instance"
+        );
+        EXPECT_EQ(restored_envelope.content["vk_result"].to<int>(), 0);
+    }
+
+    EXPECT_FALSE(source_memory.has_leak());
+    EXPECT_FALSE(destination_memory.has_leak());
 }
 
 TEST(ReflectTest, MapAndDictionaryReflection) {
@@ -398,5 +445,3 @@ TEST(ReflectTest, FillMatchingTypeIncompatibilityGracefulSkip) {
     // width 类型兼容，正常赋值 1920
     EXPECT_EQ(tgt.width, 1920);
 }
-
-
