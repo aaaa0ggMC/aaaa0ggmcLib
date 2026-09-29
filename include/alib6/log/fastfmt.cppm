@@ -25,10 +25,12 @@ module;
 #include <optional>
 #include <variant>
 
-#ifdef ALIB6_HAS_GLM
-#include <glm/glm.hpp>
-#include <glm/gtc/quaternion.hpp>
-#endif
+// 注意：本模块（alib6.log:fastfmt）刻意不在全局片段包含 GLM 头文件。
+// GCC 无法在「模块拥有的头文件定义」与「导入方 TU 的文本包含」之间去重，
+// 一旦模块接口带入 glm（尤其 gtc/quaternion 的 ext/quaternion_geometric.inl
+// 无包含守卫），下游同时 `import alib6` 与 #include <glm/...> 的 TU 就会
+// ODR 重定义。GLM 类型日志格式化改为 opt-in 头文件：
+//   #include <alib6/log/glm_ext.h>
 
 export module alib6.log:fastfmt;
 import std;
@@ -236,50 +238,5 @@ export namespace alib6::log {
             }
         }, var);
     }
-
-    // ==========================================
-    // 9. GLM 数学库向量与四元数快速格式化 (GLM Fast Formats)
-    // ==========================================
-#if defined(ALIB6_HAS_GLM)
-    template<glm::length_t L, typename T, glm::qualifier Q>
-    inline void write_to_log(pmr::string& target, const glm::vec<L, T, Q>& v) {
-        target.append("vec");
-        target.push_back(static_cast<char>('0' + L));
-        target.push_back('(');
-        for (glm::length_t i = 0; i < L; ++i) {
-            if (i > 0) target.append(", ");
-            if constexpr (std::integral<T>) {
-                char buf[32];
-                auto res = std::to_chars(buf, buf + sizeof(buf), v[i]);
-                target.append(buf, static_cast<std::size_t>(res.ptr - buf));
-            } else if constexpr (std::floating_point<T>) {
-                char buf[64];
-                auto res = std::to_chars(buf, buf + sizeof(buf), v[i]);
-                target.append(buf, static_cast<std::size_t>(res.ptr - buf));
-            } else {
-                std::format_to(std::back_inserter(target), "{}", v[i]);
-            }
-        }
-        target.push_back(')');
-    }
-
-    template<typename T, glm::qualifier Q>
-    inline void write_to_log(pmr::string& target, const glm::qua<T, Q>& q) {
-        target.append("quat(w=");
-        char buf[64];
-        auto res = std::to_chars(buf, buf + sizeof(buf), q.w);
-        target.append(buf, static_cast<std::size_t>(res.ptr - buf));
-        target.append(", x=");
-        res = std::to_chars(buf, buf + sizeof(buf), q.x);
-        target.append(buf, static_cast<std::size_t>(res.ptr - buf));
-        target.append(", y=");
-        res = std::to_chars(buf, buf + sizeof(buf), q.y);
-        target.append(buf, static_cast<std::size_t>(res.ptr - buf));
-        target.append(", z=");
-        res = std::to_chars(buf, buf + sizeof(buf), q.z);
-        target.append(buf, static_cast<std::size_t>(res.ptr - buf));
-        target.push_back(')');
-    }
-#endif
 
 } // namespace alib6::log

@@ -10,6 +10,7 @@
  */
 #include <gtest/gtest.h>
 #include "pmr_tracker.h"
+#include <alib6/log/glm_ext.h>
 import std;
 import alib6;
 
