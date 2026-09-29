@@ -4,6 +4,7 @@
  */
 #include <gtest/gtest.h>
 #include "pmr_tracker.h"
+#include <meta>
 import std;
 import alib6;
 
@@ -531,6 +532,134 @@ TEST(ADataTest, ZeroGlobalHeapAllocations) {
     EXPECT_EQ(global_allocs, 0);
 
     // 作用域析构后 PMR 内存 100% 归还
+    EXPECT_FALSE(tracker.has_leak());
+    EXPECT_EQ(tracker.live_bytes(), 0);
+}
+
+// ==================== 15. Flat 扁平化控制台输出策略 ====================
+namespace {
+
+    struct FlatWindow {
+        u32 x{0};
+        u32 y{0};
+    };
+
+    struct FlatOuter {
+        int id{0};
+        std::string name;
+        bool active{false};
+        double ratio{0.0};
+        std::vector<int> tags;
+        FlatWindow win{};
+        std::optional<std::string> note{std::nullopt};
+    };
+
+} // namespace
+
+TEST(ADataTest, FlatPolicyDump) {
+    alib6::test::CountingMemoryResource tracker;
+
+    {
+        FlatWindow window{10, 20};
+        EXPECT_EQ(to_adata(window).str<Flat>(), "x=10,y=20");
+
+        FlatOuter outer;
+        outer.id = 7;
+        outer.name = "123"; // 形似数字, 应被加引号避免解析歧义
+        outer.active = true;
+        outer.ratio = 1.5;
+        outer.tags = {1, 2, 3};
+        outer.win = {10, 20};
+
+        auto ad = to_adata(outer, &tracker);
+        auto text = ad.str<Flat>();
+        EXPECT_EQ(
+            text,
+            "active=true,id=7,name=\"123\",note=null,ratio=1.5,"
+            "tags[0]=1,tags[1]=2,tags[2]=3,win.x=10,win.y=20"
+        );
+
+        // 自定义配置: 点号数组下标 + 保留插入 (排序关闭) 亦可工作
+        FlatConfig cfg;
+        cfg.array_bracket = false;
+        Flat flat_custom(cfg);
+        auto text2 = ad.str(flat_custom);
+        EXPECT_NE(text2.find("tags.0=1"), std::string::npos);
+    }
+
+    EXPECT_FALSE(tracker.has_leak());
+    EXPECT_EQ(tracker.live_bytes(), 0);
+}
+
+TEST(ADataTest, FlatPolicyLossyParseRoundTrip) {
+    alib6::test::CountingMemoryResource tracker;
+
+    {
+        FlatWindow window{10, 20};
+        auto text = to_adata(window).str<Flat>();
+        EXPECT_EQ(text, "x=10,y=20");
+
+        // 有损解析回 AData: 数字可还原类型, 嵌套路径可还原结构
+        AData doc(&tracker);
+        Flat flat;
+        EXPECT_TRUE(flat.parse(text, doc));
+        EXPECT_TRUE(doc.is_object());
+        EXPECT_EQ(doc["x"].to<int>(), 10);
+        EXPECT_EQ(doc["y"].to<int>(), 20);
+
+        // 复杂结构的往返 (类型保真的部分)
+        FlatOuter outer;
+        outer.id = 7;
+        outer.name = "123"; // 带引号, 往返后仍是字符串
+        outer.active = true;
+        outer.ratio = 1.5;
+        outer.tags = {1, 2, 3};
+        outer.win = {10, 20};
+
+        auto src = to_adata(outer, &tracker);
+        auto dumped = src.str<Flat>();
+
+        AData back(&tracker);
+        EXPECT_TRUE(flat.parse(dumped, back));
+        EXPECT_EQ(back["id"].to<int>(), 7);
+        EXPECT_EQ(back["name"].to<std::string_view>(), "123");
+        EXPECT_TRUE(back["active"].to<bool>());
+        EXPECT_NEAR(back["ratio"].to<double>(), 1.5, 1e-9);
+        EXPECT_TRUE(back["note"].is_null());
+        EXPECT_EQ(back["win"]["x"].to<int>(), 10);
+        EXPECT_EQ(back["win"]["y"].to<int>(), 20);
+        EXPECT_EQ(back["tags"].array().size(), 3);
+        EXPECT_EQ(back["tags"][1].to<int>(), 2);
+
+        // 有损性验证: 无引号的形似数字字符串会被推断成整数
+        AData lossy(&tracker);
+        EXPECT_TRUE(flat.parse("name=123", lossy));
+        EXPECT_EQ(lossy["name"].value().get_type(), Value::INT);
+    }
+
+    EXPECT_FALSE(tracker.has_leak());
+    EXPECT_EQ(tracker.live_bytes(), 0);
+}
+
+TEST(ADataTest, FlatPolicyPMRMemoryIsolationAndLeakCheck) {
+    alib6::test::CountingMemoryResource tracker;
+
+    {
+        FlatWindow window{1, 2};
+        auto ad = to_adata(window, &tracker);
+
+        auto text = ad.str<Flat>();
+        EXPECT_EQ(text, "x=1,y=2");
+        EXPECT_GT(tracker.allocated_bytes(), 0);
+
+        AData parsed(&tracker);
+        Flat flat;
+        EXPECT_TRUE(flat.parse(text, parsed));
+        EXPECT_EQ(parsed["x"].to<int>(), 1);
+        EXPECT_EQ(parsed["y"].to<int>(), 2);
+    }
+
+    // 作用域析构后, 内存必须 100% 归还, 绝无泄漏
     EXPECT_FALSE(tracker.has_leak());
     EXPECT_EQ(tracker.live_bytes(), 0);
 }

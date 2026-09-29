@@ -29,13 +29,26 @@ export namespace alib6::data {
         alib6::Cast<T, std::string_view>;
 
     /**
-     * @brief 数据序列化/反序列化策略概念
+     * @brief 数据解析策略概念 (从文本构建 Data)
      */
     template<class T, class Data>
-    concept IsDataPolicy = requires(T& t, std::pmr::string& dmp, std::string_view data, Data& d, const Data& cd) {
+    concept IsDataParser = requires(T& t, std::string_view data, Data& d) {
         t.parse(data, d);
+    };
+
+    /**
+     * @brief 数据转储策略概念 (将 Data 渲染为文本)
+     */
+    template<class T, class Data>
+    concept IsDataDumper = requires(const T& t, std::pmr::string& dmp, const Data& cd) {
         t.dump(dmp, cd);
     };
+
+    /**
+     * @brief 数据序列化/反序列化策略概念 (解析与转储均支持)
+     */
+    template<class T, class Data>
+    concept IsDataPolicy = IsDataParser<T, Data> && IsDataDumper<T, Data>;
 
     /**
      * @brief 合并操作策略

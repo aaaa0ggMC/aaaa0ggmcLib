@@ -51,6 +51,29 @@ std::string json_out = data::dump_json(doc, {.indent = 2, .float_precision = 2})
 std::string toml_out = data::dump_toml(doc);
 ```
 
+### 2.1 Flat 扁平化控制台输出 (`:flat`)
+
+`Flat` 将 AData 树展平为 `a.b=1,c=2` 形式的单行文本，适合控制台与日志输出：
+
+```cpp
+struct Window { u32 x; u32 y; };
+
+auto text = to_adata(Window{10, 20}).str<Flat>();  // "x=10,y=20"
+
+// 也可直接写入流，或自定义分隔符 / 数组下标风格
+to_adata(window).dump(std::cout, Flat{});
+FlatConfig cfg;
+cfg.array_bracket = false;   // tags.0=1 而非 tags[0]=1
+```
+
+嵌套对象使用路径分隔符展平（`win.x=10`），数组使用下标路径（`tags[0]=1`），
+对象键默认排序以保证输出可复现。字符串在包含分隔符、空白或形似标量（数字 / `true` / `null`）
+时会自动加引号，以降低解析歧义。
+
+> ⚠️ `Flat` 是**有损（lossy）**格式：`parse` 只能做类型推断（如无引号的 `123` 会被解析为整数），
+> 空对象 / 空数组与 `null` 也无法区分。需要无损往返时请使用 JSON 或 TOML。
+> 与之相关，`IsDataPolicy` 已拆分为 `IsDataParser` + `IsDataDumper`，转储与解析可独立约束。
+
 ---
 
 ## 3. Validator DSL 架构与自动填充 (`:validator`)

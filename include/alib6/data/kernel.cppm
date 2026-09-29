@@ -1176,33 +1176,33 @@ export namespace alib6::data {
             return *this;
         }
 
-        template<class DataPolicy = JSON>
-            requires IsDataPolicy<DataPolicy, BasicAData>
-        auto load_from_memory(std::string_view mem, DataPolicy&& parser = DataPolicy()) {
-            return std::forward<DataPolicy>(parser).parse(mem, *this);
+        template<class DataParser = JSON>
+            requires IsDataParser<DataParser, BasicAData>
+        auto load_from_memory(std::string_view mem, DataParser&& parser = DataParser()) {
+            return std::forward<DataParser>(parser).parse(mem, *this);
         }
 
-        template<class DataPolicy = JSON>
-            requires IsDataPolicy<DataPolicy, BasicAData>
-        auto load_from_file(std::string_view path, DataPolicy&& parser = DataPolicy(), ErrorWrapper err = {}) {
+        template<class DataParser = JSON>
+            requires IsDataParser<DataParser, BasicAData>
+        auto load_from_file(std::string_view path, DataParser&& parser = DataParser(), ErrorWrapper err = {}) {
             auto content = alib6::io::read_all(path, 0, allocator, err);
-            return load_from_memory(content, std::forward<DataPolicy>(parser));
+            return load_from_memory(content, std::forward<DataParser>(parser));
         }
 
-        template<class DataPolicy = JSON>
-            requires IsDataPolicy<DataPolicy, BasicAData>
-        auto load_from_entry(const alib6::io::FileEntry& entry, DataPolicy&& parser = DataPolicy()) {
-            return load_from_memory(entry.read(), std::forward<DataPolicy>(parser));
+        template<class DataParser = JSON>
+            requires IsDataParser<DataParser, BasicAData>
+        auto load_from_entry(const alib6::io::FileEntry& entry, DataParser&& parser = DataParser()) {
+            return load_from_memory(entry.read(), std::forward<DataParser>(parser));
         }
 
         template<class Dumper = JSON, class T>
-            requires IsDataPolicy<Dumper, BasicAData>
+            requires IsDataDumper<Dumper, BasicAData>
         auto dump(T& target, Dumper&& dumper = Dumper()) const {
             return std::forward<Dumper>(dumper).dump(target, *this);
         }
 
         template<class Dumper = JSON>
-            requires IsDataPolicy<Dumper, BasicAData>
+            requires IsDataDumper<Dumper, BasicAData>
         [[nodiscard]] pmr::string dump_to_string(Dumper&& dumper = Dumper(), memory_resource* mem = nullptr) const {
             if (!mem) mem = allocator;
             pmr::string str(mem);
@@ -1211,27 +1211,27 @@ export namespace alib6::data {
         }
 
         template<class Dumper = JSON>
-            requires IsDataPolicy<Dumper, BasicAData>
+            requires IsDataDumper<Dumper, BasicAData>
         void dump_to_file(std::string_view file_path, Dumper&& dumper = Dumper(), memory_resource* mem = nullptr, ErrorWrapper err = {}) const {
             auto s = dump_to_string(std::forward<Dumper>(dumper), mem);
             alib6::io::write_all(file_path, s, err);
         }
 
         template<class Dumper = JSON>
-            requires IsDataPolicy<Dumper, BasicAData>
+            requires IsDataDumper<Dumper, BasicAData>
         auto dump_to_entry(const alib6::io::FileEntry& entry, Dumper&& dumper = Dumper(), memory_resource* mem = nullptr) const {
             auto s = dump_to_string(std::forward<Dumper>(dumper), mem);
             return entry.write_all(s);
         }
 
         template<class Dumper = JSON>
-            requires IsDataPolicy<Dumper, BasicAData>
+            requires IsDataDumper<Dumper, BasicAData>
         [[nodiscard]] pmr::string str(Dumper&& dmp = Dumper()) const {
             return dump_to_string(std::forward<Dumper>(dmp));
         }
 
         template<class STR, class Dumper = JSON>
-            requires IsDataPolicy<Dumper, BasicAData>
+            requires IsDataDumper<Dumper, BasicAData>
         void write_to_log(STR& s) const {
             dump(s, Dumper());
         }
@@ -1239,10 +1239,10 @@ export namespace alib6::data {
 
     using AData = BasicAData<>;
 
-    template<class Dumper = JSON, class V = Value>
+    template<class DataParser = JSON, class V = Value>
     inline BasicAData<V> adata_from_memory(std::string_view mem, memory_resource* mem_res = get_default_resource()) {
         BasicAData<V> data(mem_res);
-        data.template load_from_memory<Dumper>(mem);
+        data.template load_from_memory<DataParser>(mem);
         return data;
     }
 

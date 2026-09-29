@@ -17,6 +17,7 @@ export import :concepts;
 export import :kernel;
 export import :json;
 export import :toml;
+export import :flat;
 export import :validator;
 export import :reflect;
 export import :translator;
@@ -31,8 +32,10 @@ export namespace alib6 {
     using BasicAData = alib6::data::BasicAData<V>;
     using JSON = alib6::data::JSON;
     using TOML = alib6::data::TOML;
+    using Flat = alib6::data::Flat;
     using JSONConfig = alib6::data::JSONConfig;
     using TOMLConfig = alib6::data::TOMLConfig;
+    using FlatConfig = alib6::data::FlatConfig;
     using Validator = alib6::data::Validator;
     using CompareStrategy = alib6::data::CompareStrategy;
     using MergeOperation = alib6::data::MergeOperation;
