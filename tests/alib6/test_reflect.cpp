@@ -59,6 +59,60 @@ namespace {
         std::map<std::string, SubConfig> nodes;
     };
 
+    //// 键级约束边界测试: 结构体成员上的 optional / required 互不传染 ////
+    struct WindowConfig {
+        [[=alib6::attr::schema::required{}]]
+        alib6::u32 width{800};
+        alib6::u32 height{600};
+    };
+
+    struct FogAppConfig {
+        [[=alib6::attr::schema::optional{}]]
+        WindowConfig window;
+        alib6::u32 max_steps{64};
+    };
+
+    struct OptionalWindowHolder {
+        [[=alib6::attr::schema::optional{}]]
+        std::optional<WindowConfig> window;
+        int mode{1};
+    };
+
+    //// default_value 通过 optional 壳落地 ////
+    inline constexpr alib6::u32 kWindowDefaultWidth = 10;
+    inline constexpr alib6::u32 kWindowDefaultHeight = 100;
+    inline constexpr int kGadgetDefaultLevel = 42;
+
+    struct Gadget {
+        [[=alib6::attr::schema::default_value{kGadgetDefaultLevel}]]
+        int level{42};
+    };
+
+    struct DeepSub {
+        [[=alib6::attr::schema::required{}]]
+        Gadget gadget;
+        int plain{3};
+    };
+
+    struct NestedHolder {
+        [[=alib6::attr::schema::optional{}]]
+        DeepSub sub;
+        int mode{1};
+    };
+
+    struct WindowWithDefaults {
+        [[=alib6::attr::schema::default_value{kWindowDefaultWidth}]]
+        alib6::u32 width{kWindowDefaultWidth};
+        [[=alib6::attr::schema::default_value{kWindowDefaultHeight}]]
+        alib6::u32 height{kWindowDefaultHeight};
+    };
+
+    struct DefaultsHolder {
+        [[=alib6::attr::schema::optional{}]]
+        WindowWithDefaults window;
+        int mode{1};
+    };
+
 } // namespace
 
 TEST(ReflectTest, BasicStructSerializationAndDeserialization) {
@@ -227,6 +281,237 @@ TEST(ReflectTest, SchemaGenerationAndObjectMagicKey) {
         alib6::Validator validator(schema);
         auto val_res = validator.validate(cluster_doc);
         EXPECT_TRUE(val_res.success);
+    }
+
+    EXPECT_FALSE(tracker.has_leak());
+    EXPECT_EQ(tracker.live_bytes(), 0);
+}
+
+TEST(ReflectTest, SchemaOptionalOnNestedStructMember) {
+    alib6::test::CountingMemoryResource tracker;
+
+    {
+        auto schema = alib6::generate_schema<FogAppConfig>(&tracker);
+        EXPECT_TRUE(schema.is_object());
+
+        // window 是对象型 schema 节点, 成员级 OPTIONAL 必须落进 [ALIB6_OBJ] 规则串
+        // (旧实现 append_to_rule 只认 node[0], 对对象型节点静默丢弃)
+        ASSERT_TRUE(schema.object().contains("window"));
+        auto& win_schema = schema["window"];
+        EXPECT_TRUE(win_schema.is_object());
+        ASSERT_TRUE(win_schema.object().contains(alib6::data::magic_key_for_schema_restr));
+        auto win_rule = win_schema[alib6::data::magic_key_for_schema_restr].to<std::string_view>();
+        EXPECT_NE(win_rule.find("TYPE OBJECT"), std::string_view::npos);
+        EXPECT_NE(win_rule.find("OPTIONAL"), std::string_view::npos);
+
+        // width 显式 required; height 未标记走默认策略 (同样是 "TYPE INT")
+        EXPECT_NE(win_schema["width"][0].to<std::string_view>().find("REQUIRED"), std::string_view::npos);
+        EXPECT_EQ(win_schema["height"][0].to<std::string_view>(), "TYPE INT");
+
+        // std::optional<Struct> 成员同样受影响
+        auto opt_schema = alib6::generate_schema<OptionalWindowHolder>(&tracker);
+        ASSERT_TRUE(opt_schema.object().contains("window"));
+        auto& opt_win = opt_schema["window"];
+        EXPECT_TRUE(opt_win.is_object());
+        ASSERT_TRUE(opt_win.object().contains(alib6::data::magic_key_for_schema_restr));
+        EXPECT_NE(opt_win[alib6::data::magic_key_for_schema_restr].to<std::string_view>().find("OPTIONAL"), std::string_view::npos);
+    }
+
+    EXPECT_FALSE(tracker.has_leak());
+    EXPECT_EQ(tracker.live_bytes(), 0);
+}
+
+TEST(ReflectTest, ValidatorOptionalNestedStructKeyLevelBoundary) {
+    alib6::test::CountingMemoryResource tracker;
+
+    {
+        auto schema = alib6::generate_schema<FogAppConfig>(&tracker);
+        alib6::Validator validator(schema, &tracker);
+
+        // 1. window 整键缺席 -> optional 只管"键在不在", 整棵子树免检
+        //    壳仍会补出 (default_value 需要壳作载体), 但壳内一律不强制 required
+        {
+            alib6::AData doc(&tracker);
+            doc["max_steps"] = 64;
+            auto r = validator.validate(doc);
+            EXPECT_TRUE(r.success);
+            EXPECT_TRUE(r.recorded_errors.empty());
+            EXPECT_TRUE(doc.object().contains("window"));
+            EXPECT_TRUE(doc["window"].is_object());
+            EXPECT_EQ(doc["window"].object().size(), 0);
+        }
+
+        // 2. window 完整在场 -> 正常通过
+        {
+            alib6::AData doc(&tracker);
+            doc["max_steps"] = 64;
+            doc["window"]["width"] = 1024;
+            doc["window"]["height"] = 768;
+            auto r = validator.validate(doc);
+            EXPECT_TRUE(r.success);
+            EXPECT_TRUE(r.recorded_errors.empty());
+        }
+
+        // 3. window 在场但残缺 -> 进入 Window 层按本层规矩办事, width 是 required, 照样报错 (optional 不传染)
+        {
+            alib6::AData doc(&tracker);
+            doc["max_steps"] = 64;
+            doc["window"]._set_object();
+            auto r = validator.validate(doc);
+            EXPECT_FALSE(r.success);
+            bool hit = false;
+            for (const auto& e : r.recorded_errors) {
+                if (e.find("Required child 'width'") != std::string::npos) hit = true;
+            }
+            EXPECT_TRUE(hit);
+        }
+
+        // 4. window 在场且只有 height -> 同样报 width 缺失
+        {
+            alib6::AData doc(&tracker);
+            doc["max_steps"] = 64;
+            doc["window"]["height"] = 768;
+            auto r = validator.validate(doc);
+            EXPECT_FALSE(r.success);
+            EXPECT_FALSE(r.recorded_errors.empty());
+        }
+
+        // 5. std::optional<Struct> 缺席免检 / 残缺报错
+        {
+            auto opt_schema = alib6::generate_schema<OptionalWindowHolder>(&tracker);
+            alib6::Validator opt_validator(opt_schema, &tracker);
+
+            alib6::AData absent(&tracker);
+            absent["mode"] = 2;
+            EXPECT_TRUE(opt_validator.validate(absent).success);
+
+            alib6::AData partial(&tracker);
+            partial["mode"] = 2;
+            partial["window"]._set_object();
+            EXPECT_FALSE(opt_validator.validate(partial).success);
+        }
+    }
+
+    EXPECT_FALSE(tracker.has_leak());
+    EXPECT_EQ(tracker.live_bytes(), 0);
+}
+
+TEST(ReflectTest, ValidatorOptionalShellMaterializesSubtreeDefaults) {
+    alib6::test::CountingMemoryResource tracker;
+
+    {
+        // Window { defval(10) x; defval(100) y } + [[optional]] window:
+        // 键缺席 -> optional 免检, 且子树里的 default_value 必须照常落地
+        auto schema = alib6::generate_schema<DefaultsHolder>(&tracker);
+        ASSERT_TRUE(schema.object().contains("window"));
+        // default_value 落在对象型节点的数组表达 [规则, 默认值] 上
+        ASSERT_TRUE(schema["window"]["width"].is_array());
+        EXPECT_EQ(schema["window"]["width"].array().size(), 2u);
+        EXPECT_EQ(schema["window"]["width"][1].to<int>(), 10);
+
+        alib6::Validator validator(schema, &tracker);
+
+        // 1. 整键缺席: 不报错, 且默认值通过补出的壳落进 doc
+        {
+            alib6::AData doc(&tracker);
+            doc["mode"] = 2;
+            auto r = validator.validate(doc);
+            EXPECT_TRUE(r.success);
+            EXPECT_TRUE(r.recorded_errors.empty());
+            ASSERT_TRUE(doc.object().contains("window"));
+            EXPECT_EQ(doc["window"]["width"].to<int>(), 10);
+            EXPECT_EQ(doc["window"]["height"].to<int>(), 100);
+
+            // 联动 from_adata: schema 默认值进入 C++ 结构体
+            DefaultsHolder holder;
+            EXPECT_TRUE(alib6::from_adata(holder, doc));
+            EXPECT_EQ(holder.window.width, 10u);
+            EXPECT_EQ(holder.window.height, 100u);
+        }
+
+        // 2. 部分在场: 在场键照常严格校验, 缺失键用默认值补齐
+        {
+            alib6::AData doc(&tracker);
+            doc["mode"] = 2;
+            doc["window"]["width"] = 5;
+            auto r = validator.validate(doc);
+            EXPECT_TRUE(r.success);
+            EXPECT_EQ(doc["window"]["width"].to<int>(), 5);
+            EXPECT_EQ(doc["window"]["height"].to<int>(), 100);
+        }
+
+        // 3. 空对象在场: 同样补齐
+        {
+            alib6::AData doc(&tracker);
+            doc["mode"] = 2;
+            doc["window"]._set_object();
+            EXPECT_TRUE(validator.validate(doc).success);
+            EXPECT_EQ(doc["window"]["width"].to<int>(), 10);
+            EXPECT_EQ(doc["window"]["height"].to<int>(), 100);
+        }
+    }
+
+    EXPECT_FALSE(tracker.has_leak());
+    EXPECT_EQ(tracker.live_bytes(), 0);
+}
+
+TEST(ReflectTest, ValidatorRelaxedMissPropagatesIntoNestedSubtree) {
+    alib6::test::CountingMemoryResource tracker;
+
+    {
+        // optional sub -> { required gadget; plain } -> gadget { default_value level }
+        // sub 缺席: sub 是 optional 壳, gadget 是 required 但无自身默认,
+        // 应继续补壳+relaxed 下钻, 让 gadget.level 的默认值落地, 而不是因 gadget 缺失报错
+        auto schema = alib6::generate_schema<NestedHolder>(&tracker);
+        ASSERT_TRUE(schema.object().contains("sub"));
+        EXPECT_NE(schema["sub"][alib6::data::magic_key_for_schema_restr].to<std::string_view>().find("OPTIONAL"), std::string_view::npos);
+
+        alib6::Validator validator(schema, &tracker);
+
+        alib6::AData doc(&tracker);
+        doc["mode"] = 1;
+        auto r = validator.validate(doc);
+        EXPECT_TRUE(r.success);
+        EXPECT_TRUE(r.recorded_errors.empty());
+        ASSERT_TRUE(doc.object().contains("sub"));
+        ASSERT_TRUE(doc["sub"].object().contains("gadget"));
+        EXPECT_EQ(doc["sub"]["gadget"]["level"].to<int>(), 42);
+    }
+
+    EXPECT_FALSE(tracker.has_leak());
+    EXPECT_EQ(tracker.live_bytes(), 0);
+}
+
+TEST(ReflectTest, ValidatorOptionalScalarMemberRegression) {
+    alib6::test::CountingMemoryResource tracker;
+
+    {
+        // 未加注解的标量成员默认 required, optional 标量缺席免检 (回归旧行为)
+        struct PlainConfig {
+            [[=alib6::attr::schema::optional{}]]
+            int age{0};
+            std::string username{"admin"};
+        };
+
+        auto schema = alib6::generate_schema<PlainConfig>(&tracker);
+        EXPECT_EQ(schema["age"][0].to<std::string_view>(), "TYPE INT OPTIONAL");
+
+        alib6::Validator validator(schema, &tracker);
+
+        alib6::AData ok_doc(&tracker);
+        ok_doc["username"] = "root";
+        auto r1 = validator.validate(ok_doc);
+        EXPECT_TRUE(r1.success);
+        EXPECT_TRUE(r1.recorded_errors.empty());
+
+        alib6::AData bad_doc(&tracker);
+        auto r2 = validator.validate(bad_doc);
+        EXPECT_FALSE(r2.success);
+        bool hit = false;
+        for (const auto& e : r2.recorded_errors) {
+            if (e.find("Required child 'username'") != std::string::npos) hit = true;
+        }
+        EXPECT_TRUE(hit);
     }
 
     EXPECT_FALSE(tracker.has_leak());

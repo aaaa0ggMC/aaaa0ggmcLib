@@ -86,6 +86,9 @@ namespace alib6::data {
             Node* n;
             std::string_view key{""};
             int index{-1};
+            // 整棵子树是否由"可选键缺席"自动补出的空壳派生:
+            // 壳内只负责让子树里的 default_value 落地, 不强制任何 required 校验
+            bool relaxed_missing{false};
         };
 
         using n_t = std::variant<std::string_view, usize>;
@@ -98,13 +101,14 @@ namespace alib6::data {
             usize index;
             std::string_view name;
             Node* n;
+            bool relaxed_missing{false};
         };
         std::vector<ONext> object_next;
         frames.push_back({&doc, &root, "", -1});
         int depth = 0;
 
         while (!frames.empty()) {
-            auto [d, n, key, index] = frames.back();
+            auto [d, n, key, index, relaxed_missing] = frames.back();
             frames.pop_back();
 
             if (d == nullptr) {
@@ -143,6 +147,9 @@ namespace alib6::data {
                 return gen_loc;
             };
 
+            // relaxed_missing 模式: 整个子树是"可选键缺席"补出的空壳,
+            // 跳过一切叶子级强制校验 (类型/枚举/长度/自定义), 直接下钻让子树里的 default_value 落地
+            if (!relaxed_missing) {
             // 1. 默认值覆盖
             if (d->is_null() && n->default_value) {
                 *d = *n->default_value;
@@ -269,6 +276,7 @@ namespace alib6::data {
                     continue;
                 }
             }
+            }
 
             auto push_vis = [&] {
                 if (index >= 0) visit_tree.emplace_back(static_cast<usize>(index));
@@ -287,7 +295,7 @@ namespace alib6::data {
                         if (arr[static_cast<std::ptrdiff_t>(i)].is_null() && n->array_subs[i].default_value) {
                             arr[static_cast<std::ptrdiff_t>(i)] = *n->array_subs[i].default_value;
                         } else {
-                            frames.push_back({&arr[static_cast<std::ptrdiff_t>(i)], &n->array_subs[i], "", static_cast<int>(i)});
+                            frames.push_back({&arr[static_cast<std::ptrdiff_t>(i)], &n->array_subs[i], "", static_cast<int>(i), relaxed_missing});
                         }
                     }
                 } else if (!n->array_subs.empty()) {
@@ -299,7 +307,7 @@ namespace alib6::data {
                         if (arr[static_cast<std::ptrdiff_t>(i)].is_null() && n->array_subs[0].default_value) {
                             arr[static_cast<std::ptrdiff_t>(i)] = *n->array_subs[0].default_value;
                         } else {
-                            frames.push_back({&arr[static_cast<std::ptrdiff_t>(i)], &n->array_subs[0], "", static_cast<int>(i)});
+                            frames.push_back({&arr[static_cast<std::ptrdiff_t>(i)], &n->array_subs[0], "", static_cast<int>(i), relaxed_missing});
                         }
                     }
                 }
@@ -317,15 +325,25 @@ namespace alib6::data {
                             if (v.default_value) {
                                 obj[k] = *v.default_value;
                                 continue;
-                            } else if (v.type_restrict == Node::RArray) {
-                                obj[k].set<AData::Array>();
+                            }
+
+                            if (v.type_restrict == Node::RArray || v.type_restrict == Node::RObject) {
+                                // 结构化键缺席: 补壳并下钻, 让子树里的 default_value 有机会落地
+                                // - required 键保持严格 (孙级缺 required 照常报错), 与历史行为一致
+                                // - optional 键 / 已处于 relaxed 子树内: 整棵 relaxed, 只填默认不强制
+                                bool child_relaxed = relaxed_missing || !v.required;
+                                if (v.type_restrict == Node::RArray) {
+                                    obj[k].set<AData::Array>();
+                                } else {
+                                    obj[k].set<AData::Object>();
+                                }
                                 auto new_it = obj.find(k);
-                                object_next.push_back({new_it.it->second, k, &v});
-                            } else if (v.type_restrict == Node::RObject) {
-                                obj[k].set<AData::Object>();
-                                auto new_it = obj.find(k);
-                                object_next.push_back({new_it.it->second, k, &v});
-                            } else if (v.required) {
+                                object_next.push_back({new_it.it->second, k, &v, child_relaxed});
+                                continue;
+                            }
+
+                            // 标量键缺席
+                            if (v.required && !relaxed_missing) {
                                 if (result.enable_string_errors) {
                                     result.record_error(
                                         "{} : Required child '{}' is missing",
@@ -337,9 +355,11 @@ namespace alib6::data {
                                 success = false;
                                 break;
                             }
+                            // optional 或 relaxed: 静默跳过, 交由 C++ 侧默认成员初始化兜底
                         }
                     } else {
-                        object_next.push_back({it.it->second, k, &v});
+                        // 在场键: 继承当前帧的 relaxed 状态
+                        object_next.push_back({it.it->second, k, &v, relaxed_missing});
                     }
                 }
 
@@ -347,7 +367,7 @@ namespace alib6::data {
 
                 if (fail) continue;
                 for (auto& i : object_next) {
-                    frames.push_back({&obj.children[i.index], i.n, i.name, -1});
+                    frames.push_back({&obj.children[i.index], i.n, i.name, -1, i.relaxed_missing});
                 }
             }
         }

@@ -59,6 +59,7 @@ export namespace alib6::attr {
         SchemaSkip,
         FillBy,
         SchemaOptional,
+        SchemaRequired,
         SchemaRange,
         SchemaValidate,
         SchemaValidateArgs,
@@ -127,6 +128,7 @@ export namespace alib6::attr {
     namespace schema {
         struct skip { static constexpr Trait trait = Trait::SchemaSkip; };
         struct optional { static constexpr Trait trait = Trait::SchemaOptional; };
+        struct required { static constexpr Trait trait = Trait::SchemaRequired; };
         struct fallback { static constexpr Trait trait = Trait::SchemaFallback; }; // OVERRIDE_CONFLICT
 
         struct range {
@@ -716,6 +718,15 @@ export namespace alib6 {
                 pmr::string cur(node[0].to<std::string_view>(), mem);
                 cur += extra;
                 node[0] = std::move(cur);
+            } else if (node.is_object()) {
+                // 对象型 schema 节点没有 node[0] 规则串, 约束只能追加到 [ALIB6_OBJ] magic key 上
+                auto& rule = node[alib6::data::magic_key_for_schema_restr];
+                if (!rule.is_value()) {
+                    rule = "TYPE OBJECT";
+                }
+                pmr::string cur(rule.to<std::string_view>(), mem);
+                cur += extra;
+                rule = std::move(cur);
             }
         };
 
@@ -767,6 +778,9 @@ export namespace alib6 {
                 if constexpr (requires { DecayedAnno::trait; }) {
                     if constexpr (DecayedAnno::trait == attr::Trait::SchemaOptional) {
                         class_restr += " OPTIONAL";
+                        has_class_restr = true;
+                    } else if constexpr (DecayedAnno::trait == attr::Trait::SchemaRequired) {
+                        class_restr += " REQUIRED";
                         has_class_restr = true;
                     } else if constexpr (DecayedAnno::trait == attr::Trait::SchemaFallback) {
                         class_restr += " OVERRIDE_CONFLICT";
@@ -844,6 +858,8 @@ export namespace alib6 {
                                     append_to_rule(member_schema, " OVERRIDE_CONFLICT");
                                 } else if constexpr (trait == attr::Trait::SchemaOptional) {
                                     append_to_rule(member_schema, " OPTIONAL");
+                                } else if constexpr (trait == attr::Trait::SchemaRequired) {
+                                    append_to_rule(member_schema, " REQUIRED");
                                 } else if constexpr (trait == attr::Trait::SchemaExtra) {
                                     pmr::string extra_str(" ", mem);
                                     extra_str += AnnoT::rules();
