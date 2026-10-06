@@ -22,6 +22,62 @@ namespace pmr = std::pmr;
 
 namespace alib6::data {
 
+namespace {
+
+/// JSON 合法转义（RFC 8259）：`"`、`\`、U+0000..U+001F（\b \f \n \r \t 用短形式，其余 \u00XX）。
+/// ensure_ascii=true 时非 ASCII 转为 \uXXXX（非 BMP 用代理对；非法 UTF-8 → U+FFFD）。
+/// 与 str::escape（C 风格：\a \v \e \xNN，非 JSON）区分开。
+pmr::string json_escape(std::string_view in, bool ensure_ascii, pmr::memory_resource* mem = pmr::get_default_resource()) {
+    pmr::string out(mem);
+    out.reserve(in.size() + 8);
+    constexpr const char* hex = "0123456789abcdef";
+    auto put_u = [&](unsigned v) {
+        out += "\\u";
+        for (int k = 12; k >= 0; k -= 4) out += hex[(v >> k) & 0xF];
+    };
+    for (usize i = 0; i < in.size(); ++i) {
+        const auto c = static_cast<unsigned char>(in[i]);
+        switch (c) {
+            case '"':  out += "\\\""; continue;
+            case '\\': out += "\\\\"; continue;
+            case '\b': out += "\\b"; continue;
+            case '\f': out += "\\f"; continue;
+            case '\n': out += "\\n"; continue;
+            case '\r': out += "\\r"; continue;
+            case '\t': out += "\\t"; continue;
+            default: break;
+        }
+        if (c < 0x20) { put_u(c); continue; }
+        if (c < 0x80 || !ensure_ascii) { out += static_cast<char>(c); continue; }
+        // ensure_ascii 且为多字节：解码 UTF-8
+        u32 cp = 0xFFFD;
+        usize extra = 0;
+        if ((c & 0xE0) == 0xC0) { cp = c & 0x1F; extra = 1; }
+        else if ((c & 0xF0) == 0xE0) { cp = c & 0x0F; extra = 2; }
+        else if ((c & 0xF8) == 0xF0) { cp = c & 0x07; extra = 3; }
+        bool ok = extra != 0 && i + extra < in.size();
+        if (ok) {
+            for (usize k = 1; k <= extra; ++k) {
+                const auto cc = static_cast<unsigned char>(in[i + k]);
+                if ((cc & 0xC0) != 0x80) { ok = false; break; }
+                cp = (cp << 6) | (cc & 0x3F);
+            }
+        }
+        if (!ok || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) { put_u(0xFFFD); continue; }
+        i += extra;
+        if (cp >= 0x10000) {
+            cp -= 0x10000;
+            put_u(0xD800 + (cp >> 10));
+            put_u(0xDC00 + (cp & 0x3FF));
+        } else {
+            put_u(cp);
+        }
+    }
+    return out;
+}
+
+}  // namespace
+
     struct ADataHandler {
         pmr::vector<AData*> stack;
         pmr::string last_key;
@@ -207,7 +263,10 @@ namespace alib6::data {
 
             if (current.name) {
                 fn("\"", p);
-                fn(*current.name, p);
+                {
+                    auto key_escaped = json_escape(*current.name, cfg.ensure_ascii);
+                    fn(key_escaped, p);
+                }
                 if (cfg.compact_spaces) fn("\":", p);
                 else fn("\" : ", p);
             }
@@ -235,7 +294,7 @@ namespace alib6::data {
                     }
                 } else {
                     fn("\"", p);
-                    auto escaped = alib6::str::escape(v.to<std::string_view>(), cfg.ensure_ascii);
+                    auto escaped = json_escape(v.to<std::string_view>(), cfg.ensure_ascii);
                     fn(escaped, p);
                     fn("\"", p);
                 }

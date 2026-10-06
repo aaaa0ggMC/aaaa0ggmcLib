@@ -663,3 +663,58 @@ TEST(ADataTest, FlatPolicyPMRMemoryIsolationAndLeakCheck) {
     EXPECT_FALSE(tracker.has_leak());
     EXPECT_EQ(tracker.live_bytes(), 0);
 }
+
+// ---- JSON dump 的转义必须是合法 JSON（RFC 8259）-------------------------------------
+
+TEST(ADataTest, JsonDumpEscapesControlCharsAndKeys) {
+    AData doc;
+    // 值：引号、反斜杠、常见控制字符、其余控制字符（BEL/ESC/NUL 之外的 0x01）、DEL
+    std::string tricky = std::string("q\"b\\n\n r\r t\t bs\b ff\f ") + '\x01' + '\x07' + '\x1b' + '\x7f' + "end";
+    doc["val"] = std::string_view(tricky);
+    doc["we\"ird\\key\n"] = 1;  // 键也必须转义
+
+    JSON compact{JSONConfig{.compact_lines = true, .compact_spaces = true, .sort_object = JSONConfig::sort_asc}};
+    std::string out;
+    compact.dump(out, doc);
+
+    // 不得出现 C 风格的非 JSON 转义
+    EXPECT_EQ(out.find("\\a"), std::string::npos);
+    EXPECT_EQ(out.find("\\v"), std::string::npos);
+    EXPECT_EQ(out.find("\\e"), std::string::npos);
+    EXPECT_EQ(out.find("\\x"), std::string::npos);
+    EXPECT_NE(out.find("\\u0001"), std::string::npos);
+    EXPECT_NE(out.find("\\u0007"), std::string::npos);
+    EXPECT_NE(out.find("\\u001b"), std::string::npos);
+
+    // 往返：重新解析后值/键完全一致
+    AData back;
+    ASSERT_TRUE(back.load_from_memory(out));
+    ASSERT_TRUE(back.is_object());
+    auto v = back.object().find("val");
+    ASSERT_TRUE(v != back.object().end());
+    EXPECT_EQ(std::string(v.second().to<std::string_view>()), tricky);
+    EXPECT_TRUE(back.object().find("we\"ird\\key\n") != back.object().end());
+}
+
+TEST(ADataTest, JsonDumpEnsureAsciiUsesSurrogatePairs) {
+    AData doc;
+    doc["s"] = std::string_view("é中😀");  // U+00E9 U+4E2D U+1F600（非 BMP）
+    JSON ascii{JSONConfig{.compact_lines = true, .compact_spaces = true, .ensure_ascii = true}};
+    std::string out;
+    ascii.dump(out, doc);
+    EXPECT_NE(out.find("\\u00e9"), std::string::npos);
+    EXPECT_NE(out.find("\\u4e2d"), std::string::npos);
+    EXPECT_NE(out.find("\\ud83d\\ude00"), std::string::npos);  // 代理对，而不是 \U0001f600
+    EXPECT_EQ(out.find("\\U"), std::string::npos);
+    for (unsigned char c : out) EXPECT_LT(c, 0x80u);
+
+    AData back;
+    ASSERT_TRUE(back.load_from_memory(out));
+    EXPECT_EQ(std::string(back.object().find("s").second().to<std::string_view>()), "é中😀");
+
+    // 非 ensure_ascii：UTF-8 原样输出
+    JSON raw{JSONConfig{.compact_lines = true, .compact_spaces = true}};
+    std::string out2;
+    raw.dump(out2, doc);
+    EXPECT_NE(out2.find("é中😀"), std::string::npos);
+}
