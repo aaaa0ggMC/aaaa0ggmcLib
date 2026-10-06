@@ -166,6 +166,7 @@ export namespace alib6 {
 
     private:
         usize dispatch_max_id{0};
+        bool opt_terminated{false}; ///< 已遇到 "--"：其后的 token 一律是位置参数，不再解析选项/开关
 
         panalyser_t judge_fn(
             pcursor_t* cursor,

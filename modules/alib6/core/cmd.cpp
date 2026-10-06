@@ -18,6 +18,16 @@ namespace pmr = std::pmr;
 
 namespace alib6 {
 
+namespace {
+    /// 参与「命令行 token 匹配」的键。规范名 name 只在没有 long_name/short_name 时才参与：
+    /// 否则 `.name="instance"` 会把同名的子命令 token 当成选项吞掉（路由名与选项名撞车）。
+    template<class T>
+    std::array<std::string_view, 3> token_keys(const T& x) {
+        if (x.long_name.empty() && x.short_name.empty()) return {x.name, std::string_view{}, std::string_view{}};
+        return {x.long_name, x.short_name, std::string_view{}};
+    }
+}
+
     Command::Command(memory_resource* mem)
         : parser(mem)
         , router(mem)
@@ -109,9 +119,17 @@ namespace alib6 {
         while (*cursor && (nval = cursor->peek())) {
             bool matched = false;
 
+            // 0. "--" 终止符：吞掉它，此后（含更深的路由层与 remains）不再解析选项/开关
+            if (opt_terminated) break;
+            if (nval.data == "--") {
+                cursor->next();
+                opt_terminated = true;
+                break;
+            }
+
             // 1. 尝试匹配 Option (如 --port=8080, --port 8080, -p 8080)
             for (const auto& opt : registered_options) {
-                std::array<std::string_view, 3> keys = {opt.long_name, opt.short_name, opt.name};
+                std::array<std::string_view, 3> keys = token_keys(opt);
                 for (auto k : keys) {
                     if (k.empty()) continue;
                     if (nval.data.starts_with(k)) {
@@ -131,7 +149,7 @@ namespace alib6 {
 
             // 2. 尝试匹配 Toggle Flag (如 --verbose, -v)
             for (const auto& tog : registered_toggles) {
-                std::array<std::string_view, 3> keys = {tog.long_name, tog.short_name, tog.name};
+                std::array<std::string_view, 3> keys = token_keys(tog);
                 for (auto k : keys) {
                     if (!k.empty() && nval.data == k) {
                         found_t.emplace(k);
@@ -157,10 +175,67 @@ namespace alib6 {
         pmr::vector<pmr::unordered_map<std::string_view, pvalue_t>> find_options(mem);
         pmr::vector<CommandOutput> outputs(mem);
 
+        opt_terminated = false;
+
+        // 根层（main 层）预扫描：吃掉「第一个路由 token 之前」的选项/开关，如 `prog -j -i /x mods list`。
+        // Router::match 只在每个路由 token 之后才调用 judge_fn，根节点此前没有这一步，
+        // 导致前置选项把整条路由挤成 remains。匹配规则与 judge_fn 一致。
+        panalyser_t ana = parser.analyse();
+        {
+            auto& root_t = find_toggles.emplace_back();
+            auto& root_o = find_options.emplace_back();
+            usize i = remove_head ? 1 : 0;
+            while (i < ana.inputs.size()) {
+                const std::string_view tok = ana.inputs[i];
+                if (tok == "--") {
+                    ana.inputs.erase(ana.inputs.begin() + static_cast<std::ptrdiff_t>(i));
+                    opt_terminated = true;
+                    break;
+                }
+                bool matched = false;
+                for (const auto& opt : registered_options) {
+                    std::array<std::string_view, 3> keys = token_keys(opt);
+                    for (auto k : keys) {
+                        if (k.empty() || !tok.starts_with(k)) continue;
+                        if (tok.size() > k.size() && tok[k.size()] != '=') continue;
+                        usize eat = 1;
+                        if (tok.size() > k.size()) {
+                            root_o.emplace(k, pvalue_t(tok.substr(k.size() + 1)));
+                        } else if (i + 1 < ana.inputs.size()) {
+                            root_o.emplace(k, pvalue_t(ana.inputs[i + 1]));
+                            eat = 2;
+                        } else {
+                            root_o.emplace(k, pvalue_t(false));
+                        }
+                        ana.inputs.erase(ana.inputs.begin() + static_cast<std::ptrdiff_t>(i),
+                                         ana.inputs.begin() + static_cast<std::ptrdiff_t>(i + eat));
+                        matched = true;
+                        break;
+                    }
+                    if (matched) break;
+                }
+                if (!matched) {
+                    for (const auto& tog : registered_toggles) {
+                        std::array<std::string_view, 3> keys = token_keys(tog);
+                        for (auto k : keys) {
+                            if (!k.empty() && tok == k) {
+                                root_t.emplace(k);
+                                ana.inputs.erase(ana.inputs.begin() + static_cast<std::ptrdiff_t>(i));
+                                matched = true;
+                                break;
+                            }
+                        }
+                        if (matched) break;
+                    }
+                }
+                if (!matched) break;  // 第一个非选项 token（路由名/位置参数）：预扫描结束
+            }
+        }
+
         Router::DispatchResult result = router.match<
             Router::MatchSettings{.analyser = false}
         >(
-            parser,
+            std::move(ana),
             [&](pcursor_t* p) {
                 return judge_fn(
                     p,
@@ -169,6 +244,24 @@ namespace alib6 {
                 );
             },
             [&](panalyser_t* ana) {
+                // remains 里的选项提取：已终止则整体跳过；否则只处理第一个 "--" 之前的部分，
+                // "--" 自身移除，其后的 token 原样保留为位置参数。inputs[0] 是占位的 "--REMAINS--"。
+                if (opt_terminated) return;
+                pmr::vector<std::string_view> tail(parser.resource);
+                bool had_dashdash = false;
+                {
+                    auto it = std::find(ana->inputs.begin() + 1, ana->inputs.end(), std::string_view("--"));
+                    if (it != ana->inputs.end()) {
+                        had_dashdash = true;
+                        tail.assign(it + 1, ana->inputs.end());
+                        ana->inputs.erase(it, ana->inputs.end());
+                    }
+                }
+                struct TailRestore {
+                    panalyser_t* a; pmr::vector<std::string_view>* t; bool on;
+                    ~TailRestore() { if (on) a->inputs.insert(a->inputs.end(), t->begin(), t->end()); }
+                } restore{ana, &tail, had_dashdash};
+
                 pmr::unordered_set<std::string_view>* last_t = nullptr;
                 pmr::unordered_map<std::string_view, pvalue_t>* last_o = nullptr;
 
@@ -179,7 +272,7 @@ namespace alib6 {
                 else last_o = &find_options.emplace_back();
 
                 for (const auto& opt : registered_options) {
-                    std::array<std::string_view, 3> keys = {opt.long_name, opt.short_name, opt.name};
+                    std::array<std::string_view, 3> keys = token_keys(opt);
                     for (auto k : keys) {
                         if (k.empty()) continue;
                         auto vec = ana->extract_options(k, "=");
@@ -191,7 +284,7 @@ namespace alib6 {
                 }
 
                 for (const auto& tog : registered_toggles) {
-                    std::array<std::string_view, 3> keys = {tog.long_name, tog.short_name, tog.name};
+                    std::array<std::string_view, 3> keys = token_keys(tog);
                     for (auto k : keys) {
                         if (!k.empty() && ana->extract_flag(k)) {
                             last_t->emplace(k);

@@ -168,3 +168,165 @@ TEST(CmdTest, PMRMemoryIsolationAndLeakCheck) {
     EXPECT_FALSE(tracker.has_leak());
     EXPECT_EQ(tracker.live_bytes(), 0);
 }
+
+// ---- 选项位置：前置选项、跨层扫描、"--" 终止符 ----------------------------------------
+
+namespace {
+struct Seen {
+    bool called{false};
+    bool json{false};
+    bool quiet{false};
+    std::string instance;
+    std::string to;
+    std::vector<std::string> args;
+    std::size_t depth{0};
+};
+
+// 注册 `mods/list`、`mods/enable`、`plan` 三条路由，handler 把所见写进 Seen。
+void setup_position_cmd(alib6::Command& cmd, Seen& seen) {
+    cmd.register_toggles({{.name = "json", .short_name = "-j", .long_name = "--json"},
+                          {.name = "quiet", .short_name = "-q", .long_name = "--quiet"}});
+    cmd.register_options({{.name = "instance", .short_name = "-i", .long_name = "--instance"},
+                          {.name = "to", .long_name = "--to"}});
+    auto h = [&seen](const alib6::Command::CommandInput& in) {
+        seen = Seen{};
+        seen.called = true;
+        seen.json = in.has("json");
+        seen.quiet = in.has("quiet");
+        seen.instance = std::string(in.get("instance").view());
+        seen.to = std::string(in.get("to").view());
+        seen.depth = in.depth;
+        for (auto a : in.args()) seen.args.emplace_back(a);
+        return alib6::Command::CommandOutput::with_code(0);
+    };
+    cmd.add_route("mods/list", h);
+    cmd.add_route("mods/enable", h);
+    cmd.add_route("plan", h);
+}
+}  // namespace
+
+TEST(CmdTest, LeadingOptionsBeforeFirstRoute) {
+    alib6::Command cmd;
+    Seen seen;
+    setup_position_cmd(cmd, seen);
+
+    cmd.from_str("-j mods list");
+    EXPECT_TRUE(seen.called);
+    EXPECT_TRUE(seen.json);
+    EXPECT_EQ(seen.depth, 1u);  // 仍然下降到 mods/list
+    EXPECT_TRUE(seen.args.empty());
+
+    cmd.from_str("-i /x mods list");
+    EXPECT_TRUE(seen.called);
+    EXPECT_EQ(seen.instance, "/x");
+
+    cmd.from_str("--instance=/y mods list");
+    EXPECT_EQ(seen.instance, "/y");
+
+    cmd.from_str("-j -i /x -q mods enable ModA");
+    EXPECT_TRUE(seen.json);
+    EXPECT_TRUE(seen.quiet);
+    EXPECT_EQ(seen.instance, "/x");
+    EXPECT_EQ(seen.args, (std::vector<std::string>{"ModA"}));
+
+    cmd.from_str("-q plan");
+    EXPECT_TRUE(seen.called);
+    EXPECT_TRUE(seen.quiet);
+}
+
+TEST(CmdTest, LeadingOptionsViaFromArgsRemoveHead) {
+    alib6::Command cmd;
+    Seen seen;
+    setup_position_cmd(cmd, seen);
+    const char* argv[] = {"prog", "-j", "-i", "/x", "mods", "enable", "ModA", "--to", "3"};
+    cmd.from_args(9, argv);
+    EXPECT_TRUE(seen.called);
+    EXPECT_TRUE(seen.json);
+    EXPECT_EQ(seen.instance, "/x");
+    EXPECT_EQ(seen.to, "3");
+    EXPECT_EQ(seen.args, (std::vector<std::string>{"ModA"}));
+}
+
+TEST(CmdTest, OptionsAnywhereAfterFirstRoute) {
+    alib6::Command cmd;
+    Seen seen;
+    setup_position_cmd(cmd, seen);
+
+    cmd.from_str("mods -j list");           // 路由 token 之间
+    EXPECT_TRUE(seen.json);
+    cmd.from_str("mods -i /x list -j");     // 前后混合
+    EXPECT_EQ(seen.instance, "/x");
+    EXPECT_TRUE(seen.json);
+    cmd.from_str("mods enable ModA -j --to 3");  // 与位置参数混排
+    EXPECT_EQ(seen.to, "3");
+    EXPECT_EQ(seen.args, (std::vector<std::string>{"ModA"}));
+}
+
+TEST(CmdTest, DoubleDashTerminatesOptionParsing) {
+    alib6::Command cmd;
+    Seen seen;
+    setup_position_cmd(cmd, seen);
+
+    cmd.from_str("mods list -- -j");
+    EXPECT_FALSE(seen.json);  // "--" 之后的 -j 是位置参数
+    EXPECT_EQ(seen.args, (std::vector<std::string>{"-j"}));  // "--" 本身不出现在 args
+
+    cmd.from_str("mods enable ModA -- --to 3 x");
+    EXPECT_EQ(seen.to, "");
+    EXPECT_EQ(seen.args, (std::vector<std::string>{"ModA", "--to", "3", "x"}));
+
+    cmd.from_str("-j -- mods list");  // 前置 "--"：之后不再解析选项，但路由仍然下降
+    EXPECT_TRUE(seen.json);
+    EXPECT_EQ(seen.depth, 1u);
+}
+
+TEST(CmdTest, DefaultHandlerStillSeesOnlyOptions) {
+    alib6::Command cmd;
+    bool called = false;
+    bool json = false;
+    cmd.register_toggle({.name = "json", .short_name = "-j", .long_name = "--json"});
+    cmd.register_default_handler([&](const alib6::Command::CommandInput& in) {
+        called = true;
+        json = in.has("json");
+        return alib6::Command::CommandOutput::with_code(0);
+    });
+    cmd.from_str("-j");
+    EXPECT_TRUE(called);
+    EXPECT_TRUE(json);
+}
+
+TEST(CmdTest, OptionNameDoesNotSwallowSameNamedRoute) {
+    // 回归：.name="instance" 曾把路由 token "instance" 当成选项吞掉，使 `instance init` 失效。
+    alib6::Command cmd;
+    std::string got_route_args;
+    std::string got_instance;
+    cmd.register_option({.name = "instance", .short_name = "-i", .long_name = "--instance"});
+    cmd.add_route("instance/init", [&](const alib6::Command::CommandInput& in) {
+        got_instance = std::string(in.get("instance").view());
+        for (auto a : in.args()) got_route_args += std::string(a) + ",";
+        return alib6::Command::CommandOutput::with_code(0);
+    });
+    auto outs = cmd.from_str("instance init --instance=/x extra");
+    EXPECT_TRUE(!outs.empty() && static_cast<bool>(outs.front()));
+    EXPECT_EQ(got_instance, "/x");
+    EXPECT_EQ(got_route_args, "extra,");
+
+    // 前置选项 + 同名路由
+    got_instance.clear();
+    got_route_args.clear();
+    cmd.from_str("-i /y instance init");
+    EXPECT_EQ(got_instance, "/y");
+}
+
+TEST(CmdTest, NameOnlyOptionStillMatchesBareToken) {
+    // 兼容：只声明了 name（没有 long/short）的选项，仍可用裸名匹配。
+    alib6::Command cmd;
+    std::string got;
+    cmd.register_option({.name = "port"});
+    cmd.add_route("run", [&](const alib6::Command::CommandInput& in) {
+        got = std::string(in.get("port").view());
+        return alib6::Command::CommandOutput::with_code(0);
+    });
+    cmd.from_str("run port=9000");
+    EXPECT_EQ(got, "9000");
+}
