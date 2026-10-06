@@ -330,3 +330,36 @@ TEST(CmdTest, NameOnlyOptionStillMatchesBareToken) {
     cmd.from_str("run port=9000");
     EXPECT_EQ(got, "9000");
 }
+
+TEST(CmdTest, LongOptionIsNotAPrefixOfAnotherLongOption) {
+    // 回归：位置参数之后的 "--fomod-defaults" 曾被选项 "--fomod" 按前缀匹配吞掉（缺值报错）。
+    alib6::Command cmd;
+    bool defaults = false;
+    std::string fomod;
+    bool fomod_valid = false;
+    std::vector<std::string> args;
+    cmd.register_option({.name = "fomod", .long_name = "--fomod"});
+    cmd.register_option({.name = "mod", .long_name = "--mod"});
+    cmd.register_toggle({.name = "fomod-defaults", .long_name = "--fomod-defaults"});
+    cmd.add_route("collection/resolve", [&](const alib6::Command::CommandInput& in) {
+        defaults = in.has("fomod-defaults");
+        auto v = in.get("fomod");
+        fomod_valid = static_cast<bool>(v);
+        fomod = std::string(v.view());
+        args.clear();
+        for (auto a : in.args()) args.emplace_back(a);
+        return alib6::Command::CommandOutput::with_code(0);
+    });
+
+    cmd.from_str("collection resolve SLUG --mod K --fomod-defaults");
+    EXPECT_TRUE(defaults);
+    EXPECT_FALSE(fomod_valid);
+    EXPECT_EQ(args, (std::vector<std::string>{"SLUG"}));
+
+    cmd.from_str("collection resolve SLUG --fomod=c.json");  // "=" 写法照常
+    EXPECT_FALSE(defaults);
+    EXPECT_EQ(fomod, "c.json");
+    cmd.from_str("collection resolve SLUG --fomod c.json");  // 空格写法照常
+    EXPECT_EQ(fomod, "c.json");
+    EXPECT_EQ(args, (std::vector<std::string>{"SLUG"}));
+}

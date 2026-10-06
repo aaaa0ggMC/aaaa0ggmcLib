@@ -205,8 +205,15 @@ namespace alib6 {
     }
 
     Parser::Analyser::Cursor Parser::Analyser::with_prefix(std::string_view data, std::string_view opt, usize beg) noexcept {
+        // 长选项（"--name"）没有「连写值」的写法：只认完全相等或紧跟分隔符（"--name=v"），
+        // 否则 "--fomod" 会把 "--fomod-defaults" 当成自己的值吞掉。短选项（"-p8080"）保持前缀匹配。
+        const bool long_opt = data.size() > 2 && data.starts_with("--");
         for (usize i = beg; i < inputs.size(); ++i) {
             if (inputs[i].starts_with(data)) {
+                if (long_opt && inputs[i].size() > data.size() &&
+                    (opt.empty() || !inputs[i].substr(data.size()).starts_with(opt))) {
+                    continue;
+                }
                 auto c = Cursor{
                     *this,
                     std::span<std::string_view>(inputs).subspan(i),
